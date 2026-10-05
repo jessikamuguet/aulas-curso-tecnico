@@ -5,44 +5,65 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Portal Pro Rata</title>
 <style>
-  :root { --bg:#f4f6fb; --card:#fff; --text:#1d2433; --accent:#2f5bea; --muted:#6b7385; }
+  /* Tokens de marca: ajustar aqui quando o layout do helppi.me estiver disponível */
+  :root { --brand:#2f5bea; --bg:#f4f6fb; --card:#fff; --text:#1d2433; --muted:#6b7385; --line:#8884; }
   @media (prefers-color-scheme: dark) { :root { --bg:#12151d; --card:#1c212d; --text:#e8ebf3; --muted:#9aa3b8; } }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); display:grid; place-items:center; min-height:100vh; padding:16px; }
-  .card { background:var(--card); padding:28px; border-radius:14px; width:100%; max-width:420px; box-shadow:0 4px 24px #0002; }
-  h1 { margin:0 0 16px; font-size:1.3rem; }
-  label { display:block; margin:12px 0 4px; font-size:.85rem; color:var(--muted); }
-  input { width:100%; padding:10px; border:1px solid #8884; border-radius:8px; background:transparent; color:inherit; font-size:1rem; }
-  button { margin-top:18px; width:100%; padding:11px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-size:1rem; cursor:pointer; }
-  button.link { background:none; color:var(--muted); margin-top:8px; }
-  .res { margin-top:18px; padding:14px; border-radius:8px; background:#2f5bea18; line-height:1.6; }
-  .erro { color:#d33; margin-top:10px; font-size:.9rem; }
-  [hidden] { display:none; }
+  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--brand); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
+  header img { height:32px; } header img[src=""] { display:none; }
+  header b { font-size:1.1rem; flex:1; }
+  header button { background:#fff3; color:#fff; border:0; padding:6px 12px; border-radius:6px; cursor:pointer; }
+  main { padding:16px; max-width:1100px; margin:0 auto; }
+  .card { background:var(--card); padding:20px; border-radius:12px; box-shadow:0 2px 12px #0001; margin-bottom:16px; }
+  .login { max-width:380px; margin:40px auto; }
+  h1,h2 { margin:0 0 12px; font-size:1.2rem; }
+  label { display:block; margin:10px 0 4px; font-size:.85rem; color:var(--muted); }
+  input,select { padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; width:100%; }
+  .btn { padding:9px 16px; border:0; border-radius:6px; background:var(--brand); color:#fff; font:inherit; cursor:pointer; margin-top:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+  .tw { overflow-x:auto; } table { border-collapse:collapse; width:100%; font-size:.9rem; }
+  th,td { padding:6px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  td input,td select { min-width:90px; } td.n { text-align:right; }
+  tfoot td { font-weight:700; } .erro { color:#d33; margin-top:8px; }
+  [hidden] { display:none !important; }
 </style>
 </head>
 <body>
-<main class="card">
-  <section id="login">
-    <h1>Portal de acesso</h1>
+<header>
+  <img id="logo" src="" alt="Logo"> <!-- colocar o logo aqui -->
+  <b>Portal Pro Rata</b>
+  <button id="sair" hidden>Sair</button>
+</header>
+<main>
+  <section id="login" class="card login">
+    <h1>Acesso</h1>
     <form id="fLogin">
       <label for="user">Usuário</label><input id="user" autocomplete="username" required>
       <label for="pass">Senha</label><input id="pass" type="password" autocomplete="current-password" required>
-      <button>Entrar</button>
+      <button class="btn">Entrar</button>
       <div class="erro" id="erroLogin"></div>
     </form>
   </section>
 
   <section id="calc" hidden>
-    <h1>Calculadora Pro Rata</h1>
-    <form id="fCalc">
-      <label for="valor">Valor mensal (R$)</label><input id="valor" type="number" step="0.01" min="0" required>
-      <label for="ini">Data de início</label><input id="ini" type="date" required>
-      <label for="fim">Data de fim (opcional, padrão: fim do mês)</label><input id="fim" type="date">
-      <button>Calcular</button>
+    <div class="card">
+      <h2>Apólice</h2>
+      <div class="grid">
+        <div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div>
+        <div><label for="com">Comissão (%)</label><input id="com" type="number" step="0.01" min="0" max="100" value="35"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Endossos</h2>
+      <div class="tw"><table>
+        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Proposta</th><th>Nº Endosso</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Dias</th><th>Custo dia</th><th>C. devido</th><th>Valor</th><th>Comissão</th><th></th></tr></thead>
+        <tbody id="linhas"></tbody>
+        <tfoot><tr><td colspan="11" class="n">TOTAL</td><td class="n" id="tV">-</td><td class="n" id="tC">-</td><td></td></tr></tfoot>
+      </table></div>
+      <button class="btn" id="add">+ Adicionar linha</button>
       <div class="erro" id="erroCalc"></div>
-    </form>
-    <div class="res" id="res" hidden></div>
-    <button class="link" id="sair">Sair</button>
+    </div>
   </section>
 </main>
 <script src="prorata.js"></script>
@@ -53,31 +74,44 @@
   const brl = v => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
   const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
 
-  function mostrar(logado) { $("login").hidden = logado; $("calc").hidden = !logado; }
+  function mostrar(logado) { $("login").hidden = logado; $("calc").hidden = !logado; $("sair").hidden = !logado; }
   mostrar(sessionStorage.getItem("logado") === "1");
-
   $("fLogin").onsubmit = e => {
     e.preventDefault();
-    if (USUARIOS[$("user").value] === $("pass").value) {
-      sessionStorage.setItem("logado", "1"); $("erroLogin").textContent = ""; mostrar(true);
-    } else $("erroLogin").textContent = "Usuário ou senha inválidos.";
+    if (USUARIOS[$("user").value] === $("pass").value) { sessionStorage.setItem("logado","1"); mostrar(true); }
+    else $("erroLogin").textContent = "Usuário ou senha inválidos.";
   };
   $("sair").onclick = () => { sessionStorage.removeItem("logado"); mostrar(false); };
 
-  $("fCalc").onsubmit = e => {
-    e.preventDefault();
+  const campos = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td><td><input class="ne"></td>
+    <td><select class="tp"><option>INCLUSÃO</option><option>EXCLUSÃO</option></select></td>
+    <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
+    <td class="n r-dias">-</td><td class="n r-cd">-</td><td class="n r-dev">-</td><td class="n r-val">-</td><td class="n r-com">-</td>
+    <td><button class="x" title="Remover">✕</button></td>`;
+  function addLinha() {
+    const tr = document.createElement("tr"); tr.innerHTML = campos; $("linhas").appendChild(tr);
+    tr.querySelector(".x").onclick = () => { tr.remove(); recalcular(); };
+  }
+  function recalcular() {
     $("erroCalc").textContent = "";
-    try {
-      const ini = parse($("ini").value);
-      const dMes = diasNoMes(ini.getFullYear(), ini.getMonth() + 1);
-      const fim = $("fim").value ? parse($("fim").value) : new Date(ini.getFullYear(), ini.getMonth(), dMes);
-      if (fim < ini) throw new Error("A data de fim é anterior ao início.");
-      const usados = diasEntre(ini, fim);
-      const r = calcularProRata(parseFloat($("valor").value), dMes, usados);
-      $("res").hidden = false;
-      $("res").innerHTML = `Dias no mês: <b>${dMes}</b><br>Dias utilizados: <b>${usados}</b><br>Valor por dia: <b>${brl(r.valorDia)}</b><br>Total pro rata: <b>${brl(r.total)}</b>`;
-    } catch (err) { $("res").hidden = true; $("erroCalc").textContent = err.message; }
-  };
+    let tv = 0, tc = 0, erro = "";
+    const vig = $("vig").value ? parse($("vig").value) : null;
+    const pct = (parseFloat($("com").value) || 0) / 100;
+    for (const tr of $("linhas").children) {
+      const q = s => tr.querySelector(s), data = q(".dt").value, vi = parseFloat(q(".vi").value);
+      const set = (a,b,c,d,e) => { q(".r-dias").textContent=a; q(".r-cd").textContent=b; q(".r-dev").textContent=c; q(".r-val").textContent=d; q(".r-com").textContent=e; };
+      if (!vig || !data || isNaN(vi)) { set("-","-","-","-","-"); continue; }
+      try {
+        const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, comissao: pct, tipo: q(".tp").value });
+        set(r.dias, brl(r.custoDia), brl(r.custoDevido), brl(r.valor), brl(r.comissao));
+        tv += r.valor; tc += r.comissao;
+      } catch (e) { set("-","-","-","-","-"); erro = e.message; }
+    }
+    $("tV").textContent = brl(tv); $("tC").textContent = brl(tc); $("erroCalc").textContent = erro;
+  }
+  $("add").onclick = addLinha;
+  $("calc").addEventListener("input", recalcular);
+  addLinha();
 </script>
 </body>
 </html>
