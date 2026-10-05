@@ -26,7 +26,7 @@
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
   .tw { overflow-x:auto; } table { border-collapse:collapse; width:100%; font-size:.9rem; }
   th,td { padding:6px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
-  td input { min-width:90px; } td select { min-width:120px; } td.n { text-align:right; }
+  td input { min-width:90px; } td select { min-width:140px; } td input.mm { min-width:210px; } td input.ch { min-width:190px; } td.n { text-align:right; }
   tfoot td { font-weight:700; color:var(--brand); } .erro { color:#d33; margin-top:8px; }
   .btn.sec { background:transparent; color:var(--text); border:1px solid var(--line); margin-right:8px; }
   .termo { display:flex; gap:12px; align-items:flex-start; text-align:left; width:100%; padding:14px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
@@ -35,6 +35,12 @@
   .termo[aria-pressed="true"] .chk { background:var(--brand); }
   .termo[aria-pressed="true"] .chk::after { content:"✓"; color:#000; font-weight:700; }
   .ok { margin-top:14px; padding:14px; border-radius:8px; border:1px solid var(--accent); }
+  .imp { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px; padding:12px; border:1px dashed var(--line); border-radius:10px; }
+  .imp input[type=file] { width:auto; flex:1; min-width:200px; }
+  .imp small { color:var(--muted); flex-basis:100%; }
+  .aviso { margin:12px 0; padding:14px; border-radius:8px; border:1px solid var(--brand); background:#f8710114; }
+  .lista-erros { margin:10px 0 0; padding-left:20px; max-height:180px; overflow:auto; color:#e05555; font-size:.9rem; }
+  .btn.mini { margin:0; padding:7px 12px; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -59,6 +65,15 @@
     <!-- Etapa 1: identificação dos veículos -->
     <div id="etapa1" class="card">
       <h2>1. Veículos</h2>
+      <div class="imp">
+        <label for="arq" style="margin:0">Importar planilha (.xlsx ou .csv)</label>
+        <input id="arq" type="file" accept=".xlsx,.csv">
+        <button type="button" class="btn sec mini" id="modelo">Baixar modelo (CSV)</button>
+        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB, MOD, PLACA, CHASSI. Os veículos importados entram como inclusão.</small>
+        <div class="erro" id="erroImp" style="flex-basis:100%"></div>
+        <ul class="lista-erros" id="listaErros" hidden></ul>
+      </div>
+      <div class="aviso" id="avisoSub" hidden></div>
       <div class="tw"><table>
         <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
         <tbody id="veiculos"></tbody>
@@ -74,10 +89,11 @@
         <h2>2. Cálculo</h2>
         <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
         <div class="tw"><table>
-          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Valor inicial do substituído</th><th>Dias</th><th>Valor</th></tr></thead>
+          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Dias</th><th>Valor</th></tr></thead>
           <tbody id="linhas"></tbody>
           <tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
         </table></div>
+        <div class="aviso" id="avisoSub2" hidden></div>
         <div class="erro" id="erroCalc"></div>
         <button class="btn sec" id="voltar">← Voltar</button>
       </div>
@@ -113,39 +129,156 @@
   const opts = TIPOS.map(t => `<option>${t}</option>`).join("");
 
   // Etapa 1
-  function addVeiculo() {
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  function addVeiculo(v = {}) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td>
       <td><select class="tp">${opts}</select></td><td><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
-    tr.querySelector(".tp").onchange = e => { tr.querySelector(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; };
-    tr.querySelector(".x").onclick = () => tr.remove();
+    const q = s => tr.querySelector(s);
+    q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || "";
+    q(".tp").onchange = e => { q(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; avisoSub(); };
+    q(".ps").oninput = avisoSub; q(".pl").oninput = avisoSub;
+    q(".x").onclick = () => { tr.remove(); avisoSub(); };
     $("veiculos").appendChild(tr);
   }
-  $("addV").onclick = addVeiculo;
+  $("addV").onclick = () => addVeiculo();
   addVeiculo();
+
+  const lerVeiculos = () => [...$("veiculos").children].map(tr => ({
+    mm: tr.querySelector(".mm").value.trim(), pl: tr.querySelector(".pl").value.trim(),
+    ch: tr.querySelector(".ch").value.trim(), np: tr.querySelector(".np").value.trim(),
+    tp: tr.querySelector(".tp").value, ps: tr.querySelector(".ps").value.trim() }));
+
+  // Aviso de substituição: a placa é analisada internamente antes de qualquer cálculo
+  function avisoSub() {
+    const subs = lerVeiculos().filter(v => v.tp === "SUBSTITUIÇÃO");
+    $("avisoSub").hidden = !subs.length;
+    if (!subs.length) return;
+    const placas = subs.map(v => esc(v.pl || "(placa não informada)") + (v.ps ? " (substitui " + esc(v.ps) + ")" : "")).join(", ");
+    $("avisoSub").innerHTML = `<b>Substituição:</b> antes de prosseguir com o cálculo, iremos analisar a placa internamente, pois é necessário verificar em outro site se houve acionamentos dessa placa. Veículo(s): ${placas}. Esses veículos não entram no cálculo agora e retornaremos após a análise.`;
+  }
 
   function etapa(n) { $("etapa1").hidden = n !== 1; $("etapa2").hidden = n !== 2; }
   $("irCalculo").onclick = () => {
-    const vs = [...$("veiculos").children].map(tr => ({
-      mm: tr.querySelector(".mm").value.trim(), pl: tr.querySelector(".pl").value.trim(),
-      ch: tr.querySelector(".ch").value.trim(), np: tr.querySelector(".np").value.trim(),
-      tp: tr.querySelector(".tp").value, ps: tr.querySelector(".ps").value.trim() }));
-    if (!vs.length || vs.some(v => !v.mm || !v.pl || !v.ch)) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos."; return; }
-    if (vs.some(v => v.tp === "SUBSTITUIÇÃO" && !v.ps)) { $("erro1").textContent = "Informe a placa do veículo substituído."; return; }
+    const todos = lerVeiculos(), subs = todos.filter(v => v.tp === "SUBSTITUIÇÃO"), vs = todos.filter(v => v.tp !== "SUBSTITUIÇÃO");
+    if (!todos.length || todos.some(v => !v.mm || !v.pl || !v.ch)) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos."; return; }
+    if (subs.some(v => !v.ps)) { $("erro1").textContent = "Informe a placa do veículo substituído."; return; }
+    avisoSub();
+    if (!vs.length) { $("erro1").textContent = "Não há veículos para calcular agora: as substituições seguem para análise interna da placa."; return; }
     $("erro1").textContent = "";
     $("linhas").innerHTML = "";
     vs.forEach(v => {
       const tr = document.createElement("tr"); tr.dataset.tp = v.tp;
-      tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}${v.tp==="SUBSTITUIÇÃO" ? " (substitui "+esc(v.ps)+")" : ""}</small></td><td>${v.tp}</td>
+      tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}</small></td><td>${v.tp}</td>
         <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
-        <td>${v.tp==="SUBSTITUIÇÃO" ? '<input class="vs" type="number" step="0.01" min="0">' : "—"}</td>
         <td class="n r-dias">-</td><td class="n r-val">-</td>`;
       $("linhas").appendChild(tr);
     });
+    $("avisoSub2").hidden = !subs.length;
+    $("avisoSub2").innerHTML = subs.length ? `Em análise interna (fora do cálculo): ${subs.map(v => esc(v.pl)).join(", ")}.` : "";
     resetTermo(); recalcular(); etapa(2);
   };
   $("voltar").onclick = () => etapa(1);
-  const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  // Importação de planilha (modelo: aba FROTA)
+  const COLS = ["MARCA","MODELO","TIPO","FAB","MOD","PLACA","CHASSI"];
+  const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
+  $("modelo").onclick = () => {
+    const csv = "﻿QTD;MARCA;MODELO;TIPO;FAB;MOD;PLACA;CHASSI\n1;SR;RANDON SR CC;SEMI REBOQUE;2011;2012;AUX7D92;9ADK1243BCM330714\n";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type:"text/csv" })); a.download = "modelo-frota.csv"; a.click();
+  };
+
+  async function inflar(bytes) {
+    const ds = new DecompressionStream("deflate-raw");
+    return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer());
+  }
+  async function lerZip(buf) {
+    const dv = new DataView(buf), u8 = new Uint8Array(buf), dec = new TextDecoder(), arq = {};
+    let e = u8.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+    if (e < 0) throw new Error("Arquivo não é um .xlsx válido.");
+    let n = dv.getUint16(e + 10, true), p = dv.getUint32(e + 16, true);
+    for (; n > 0; n--) {
+      const met = dv.getUint16(p + 10, true), tam = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true),
+            el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true),
+            nome = dec.decode(u8.subarray(p + 46, p + 46 + nl));
+      const ini = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true), dados = u8.subarray(ini, ini + tam);
+      arq[nome] = { met, dados }; p += 46 + nl + el + cl;
+    }
+    return async nome => { const f = arq[nome]; if (!f) return null; return dec.decode(f.met === 8 ? await inflar(f.dados) : f.dados); };
+  }
+  const xml = s => new DOMParser().parseFromString(s, "application/xml");
+  const colIdx = ref => [...ref.replace(/\d/g, "")].reduce((a, c) => a * 26 + c.charCodeAt(0) - 64, 0) - 1;
+  async function lerXlsx(buf) {
+    const get = await lerZip(buf);
+    const wb = xml(await get("xl/workbook.xml")), rels = xml(await get("xl/_rels/workbook.xml.rels"));
+    const aba = [...wb.getElementsByTagName("sheet")].find(s => norm(s.getAttribute("name")) === "FROTA");
+    if (!aba) throw new Error('Aba "FROTA" não encontrada. Use o modelo de planilha.');
+    const rid = aba.getAttribute("r:id") || aba.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+    let alvo = [...rels.getElementsByTagName("Relationship")].find(r => r.getAttribute("Id") === rid).getAttribute("Target");
+    alvo = alvo.startsWith("/") ? alvo.slice(1) : "xl/" + alvo;
+    const ss = await get("xl/sharedStrings.xml");
+    const strs = ss ? [...xml(ss).getElementsByTagName("si")].map(si => [...si.getElementsByTagName("t")].map(t => t.textContent).join("")) : [];
+    const linhas = [];
+    for (const row of xml(await get(alvo)).getElementsByTagName("row")) {
+      const r = []; 
+      for (const c of row.getElementsByTagName("c")) {
+        const t = c.getAttribute("t"), v = c.getElementsByTagName("v")[0]?.textContent;
+        r[colIdx(c.getAttribute("r"))] = t === "s" ? strs[+v] : t === "inlineStr" ? c.textContent : v;
+      }
+      linhas[+row.getAttribute("r") - 1] = r;
+    }
+    return linhas;
+  }
+  function lerCsv(txt) {
+    const sep = (txt.split("\n")[0].match(/;/g) || []).length >= (txt.split("\n")[0].match(/,/g) || []).length ? ";" : ",";
+    return txt.replace(/^﻿/, "").split(/\r?\n/).map(l => l.split(sep).map(c => c.replace(/^"|"$/g, "")));
+  }
+
+  // Valida com base no modelo; devolve { veiculos, erros }
+  function validarFrota(linhas) {
+    const hi = linhas.findIndex(r => r && r.some(c => norm(c) === "PLACA"));
+    if (hi < 0) return { erros: ["Cabeçalho não encontrado. A planilha precisa ter a coluna PLACA (veja o modelo)."] };
+    const idx = {}; (linhas[hi] || []).forEach((c, i) => { if (c != null) idx[norm(c)] = i; });
+    const falta = COLS.filter(c => !(c in idx));
+    if (falta.length) return { erros: ["Colunas ausentes no modelo: " + falta.join(", ") + "."] };
+    const erros = [], veiculos = [], placas = new Set(), chassis = new Set(), existentes = lerVeiculos();
+    existentes.forEach(v => { placas.add(norm(v.pl).replace(/[- ]/g, "")); chassis.add(norm(v.ch)); });
+    for (let i = hi + 1; i < linhas.length; i++) {
+      const r = linhas[i]; if (!r) continue;
+      const g = c => String(r[idx[c]] ?? "").trim(), n = i + 1;
+      const marca = g("MARCA"), modelo = g("MODELO"), pl = norm(g("PLACA")).replace(/[- ]/g, ""), ch = norm(g("CHASSI"));
+      if (!marca && !modelo && !pl && !ch) continue; // linha vazia ou só de totais/fórmulas
+      const e = [];
+      if (!marca || !modelo) e.push("marca/modelo obrigatórios");
+      if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(pl)) e.push("placa inválida (" + (pl || "vazia") + ")");
+      else if (placas.has(pl)) e.push("placa repetida (" + pl + ")");
+      if (!/^[A-Z0-9]{17}$/.test(ch)) e.push("chassi deve ter 17 caracteres");
+      else if (chassis.has(ch)) e.push("chassi repetido");
+      for (const c of ["FAB","MOD"]) { const v = g(c); if (v && !(/^\d{4}$/.test(v) && v >= 1950 && v <= 2100)) e.push(c + " inválido (" + v + ")"); }
+      if (e.length) erros.push(`Linha ${n}: ` + e.join("; "));
+      else { placas.add(pl); chassis.add(ch); veiculos.push({ mm: (marca + " " + modelo).trim(), pl, ch }); }
+    }
+    if (!veiculos.length && !erros.length) erros.push("Nenhum veículo encontrado na planilha.");
+    return { veiculos, erros };
+  }
+  $("arq").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    $("erroImp").textContent = ""; $("listaErros").hidden = true; $("listaErros").innerHTML = "";
+    try {
+      const linhas = /\.csv$/i.test(f.name) ? lerCsv(await f.text()) : await lerXlsx(await f.arrayBuffer());
+      const { veiculos, erros } = validarFrota(linhas);
+      if (erros.length) {
+        $("erroImp").textContent = `Planilha fora do modelo: ${erros.length} problema(s). Nenhum veículo foi importado.`;
+        $("listaErros").innerHTML = erros.map(x => `<li>${esc(x)}</li>`).join(""); $("listaErros").hidden = false;
+      } else {
+        const vazio = lerVeiculos().length === 1 && !lerVeiculos()[0].mm && !lerVeiculos()[0].pl && !lerVeiculos()[0].ch;
+        if (vazio) $("veiculos").innerHTML = "";
+        veiculos.forEach(addVeiculo); avisoSub();
+        $("erroImp").style.color = "inherit"; $("erroImp").textContent = `${veiculos.length} veículo(s) importado(s) com sucesso.`;
+      }
+    } catch (err) { $("erroImp").textContent = "Não foi possível ler a planilha: " + err.message; }
+    e.target.value = "";
+  };
 
   // Etapa 2
   let total = null;
@@ -155,11 +288,10 @@
     const vig = $("vig").value ? parse($("vig").value) : null;
     for (const tr of $("linhas").children) {
       const q = s => tr.querySelector(s), data = q(".dt").value, vi = parseFloat(q(".vi").value);
-      const vsEl = q(".vs"), vs = vsEl ? parseFloat(vsEl.value) : 0;
       const set = (a,d) => { q(".r-dias").textContent=a; q(".r-val").textContent=d; };
-      if (!vig || !data || isNaN(vi) || (vsEl && isNaN(vs))) { set("-","-"); completo = false; continue; }
+      if (!vig || !data || isNaN(vi)) { set("-","-"); completo = false; continue; }
       try {
-        const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, valorSubstituido: vs, tipo: tr.dataset.tp });
+        const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, tipo: tr.dataset.tp });
         set(r.dias, brl(r.valor)); tv += r.valor;
       } catch (e) { set("-","-"); erro = e.message; completo = false; }
     }
