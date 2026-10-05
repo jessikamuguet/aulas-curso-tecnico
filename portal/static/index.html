@@ -32,15 +32,16 @@
     <div id="etapa1" class="card">
       <h2>1. Veículos</h2>
       <div class="imp">
-        <label for="arq" style="margin:0">Importar planilha (.xlsx ou .csv)</label>
-        <input id="arq" type="file" accept=".xlsx,.csv">
+        <label for="arq" style="margin:0">Importar planilha (.xlsx, .xls ou .csv)</label>
+        <input id="arq" type="file" accept=".xlsx,.xls,.csv">
         <label for="tipoImp" style="margin:0">Tipo de endosso dos veículos importados</label>
         <select id="tipoImp" style="width:auto"><option>INCLUSÃO</option><option>EXCLUSÃO</option></select>
         <button type="button" class="btn sec mini" id="modelo">Baixar modelo (CSV)</button>
-        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB e MOD (ou Ano fab/Ano mod, ou Ano fabricação/Ano modelo, em colunas separadas), PLACA, CHASSI.</small>
+        <small>A aba pode ter qualquer nome: o sistema usa a que tiver as colunas MARCA, MODELO, PLACA e CHASSI e o ano (FAB e/ou MOD, Ano fab./Ano mod. ou Ano fabricação/Ano modelo, em colunas separadas). Veículo 0 km sem placa só entra como inclusão.</small>
         <div class="erro" id="erroImp" style="flex-basis:100%"></div>
         <ul class="lista-erros" id="listaErros" hidden></ul>
       </div>
+      <div class="aviso" id="avisoAnos" hidden></div>
       <div class="aviso" id="avisoExc" hidden></div>
       <div class="aviso" id="avisoSub" hidden></div>
       <div class="tw"><table id="tabVeiculos">

@@ -28,14 +28,19 @@ const Mock = (() => {
     if (!Array.isArray(vs) || !vs.length || vs.length > 500) fail("Informe de 1 a 500 veículos.");
     const algumCalc = vs.some(v => v.tipo !== "SUBSTITUIÇÃO");
     if (algumCalc && !/^\d{4}-\d{2}-\d{2}$/.test(d.vigencia || "")) fail("Vigência inicial inválida.");
-    const vig = algumCalc ? parse(d.vigencia) : null, usadas = new Set(), linhas = [];
+    const vig = algumCalc ? parse(d.vigencia) : null, usadas = new Set(), chassisUsados = new Set(), linhas = [];
     vs.forEach((v, i) => {
       const n = i + 1, placa = placaNorm(v.placa), chassi = String(v.chassi || "").toUpperCase().trim();
       if (!["INCLUSÃO","EXCLUSÃO","SUBSTITUIÇÃO"].includes(v.tipo)) fail(`Veículo ${n}: tipo de endosso inválido.`);
-      if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placa)) fail(`Veículo ${n}: placa inválida.`);
+      let placaFinal = placa;
+      if (placa === "" || /^[A-Z]{3}0000$/.test(placa)) { // 0 km ainda sem placa: só em inclusão
+        if (v.tipo !== "INCLUSÃO") fail(`Veículo ${n}: a placa é obrigatória na ${v.tipo.toLowerCase()}.`);
+        placaFinal = "SEM PLACA";
+      } else if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placa)) fail(`Veículo ${n}: placa inválida.`);
       if (!/^[A-Z0-9]{17}$/.test(chassi)) fail(`Veículo ${n}: chassi deve ter 17 caracteres.`);
       if (!String(v.marca_modelo || "").trim()) fail(`Veículo ${n}: informe marca/modelo.`);
-      if (usadas.has(placa)) fail(`Placa repetida na solicitação: ${placa}.`); usadas.add(placa);
+      if (placaFinal !== "SEM PLACA" && usadas.has(placaFinal)) fail(`Placa repetida na solicitação: ${placaFinal}.`); usadas.add(placaFinal);
+      if (chassisUsados.has(chassi)) fail(`Chassi repetido na solicitação: ${chassi}.`); chassisUsados.add(chassi);
       const af = parseInt(v.ano_fab), am = parseInt(v.ano_mod);
       if (isNaN(af) || isNaN(am)) fail(`Veículo ${n}: informe o ano de fabricação e o ano do modelo.`);
       if (af < 1950 || af > 2100 || am < 1950 || am > 2100) fail(`Veículo ${n}: ano de fabricação/modelo inválido.`);
@@ -48,7 +53,7 @@ const Mock = (() => {
         try { const r = calcularEndosso({ vigencia: vig, data: parse(v.data_endosso), valorInicial: v.valor_inicial, tipo: v.tipo });
               dias = r.dias; vc = Math.round(r.valor * 100) / 100; } catch (e) { fail(e.message); }
       }
-      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa, chassi, ano_fab: af, ano_mod: am, contrato: String(v.contrato || ""), tipo: v.tipo,
+      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa: placaFinal, chassi, ano_fab: af, ano_mod: am, contrato: String(v.contrato || ""), tipo: v.tipo,
         placa_substituida: ps || null, data_endosso: v.data_endosso || null, valor_inicial: v.tipo === "SUBSTITUIÇÃO" ? null : v.valor_inicial,
         dias, valor_calculado: vc, acionamento: false, valor_final: null, confirmado: false });
     });

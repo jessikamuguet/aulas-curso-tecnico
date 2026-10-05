@@ -37,6 +37,18 @@ Para regerar depois de mudar algo em `static/`: `python build_demo.py`.
 5. Devolvida, o cliente confere veículo a veículo, pode **comunicar divergência** (veículo que saiu/faltou) e dá a
    **ciência** ("recebi, visualizei e estou de acordo com o que foi calculado"). O admin vê a ciência e a divergência.
 
+## Importação de planilhas de frota
+
+Aceita `.xlsx`, `.xls` (Excel antigo, lido no servidor) e `.csv`; o formato é reconhecido pelo conteúdo do arquivo.
+
+- **Aba:** qualquer nome. Vale a primeira aba que tiver as colunas MARCA, MODELO, PLACA e CHASSI e o ano. Abas de proposta,
+  resumo etc. são ignoradas. A ordem das colunas não importa e colunas extras (Tipo, Guincho, Vidros...) são ignoradas.
+- **Ano:** FAB/MOD, Ano fab./Ano mod. ou Ano fabricação/Ano modelo, sempre em colunas separadas. Se a planilha trouxer só uma
+  das colunas, a importação avisa e oferece um botão para copiar o ano para o outro campo (decisão de quem importa).
+- **Placa:** formato antigo ou Mercosul. Veículo **0 km sem placa** (célula vazia ou `AAA0000`) entra **só como inclusão**, como
+  "SEM PLACA", identificado pelo chassi. Exclusão e substituição exigem a placa.
+- Chassi com 17 caracteres; placas e chassis repetidos são recusados. Se houver erro, nada é importado e a lista mostra a linha.
+
 ## Planilha para o administrativo
 
 Em *Solicitações* (**Exportar CSV**, todas as filtradas) e na página de cada solicitação (**Baixar planilha**) sai um CSV com

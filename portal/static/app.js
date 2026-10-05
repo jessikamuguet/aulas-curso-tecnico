@@ -45,6 +45,8 @@ async function rota() {
   }
 }
 window.addEventListener("hashchange", rota);
+// Clicar no item do menu da tela atual reabre a tela (ex.: "Nova solicitação" volta a um formulário limpo)
+$("nav").addEventListener("click", e => { const a = e.target.closest("a"); if (a && a.getAttribute("href") === location.hash) { e.preventDefault(); rota(); } });
 
 async function entrar(user) { USER = user; montarMenu(); if (!location.hash || location.hash === "#/login") location.hash = ""; await rota(); }
 async function sair(silencioso) {

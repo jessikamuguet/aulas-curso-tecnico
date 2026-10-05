@@ -88,15 +88,16 @@
     <div id="etapa1" class="card">
       <h2>1. Veículos</h2>
       <div class="imp">
-        <label for="arq" style="margin:0">Importar planilha (.xlsx ou .csv)</label>
-        <input id="arq" type="file" accept=".xlsx,.csv">
+        <label for="arq" style="margin:0">Importar planilha (.xlsx, .xls ou .csv)</label>
+        <input id="arq" type="file" accept=".xlsx,.xls,.csv">
         <label for="tipoImp" style="margin:0">Tipo de endosso dos veículos importados</label>
         <select id="tipoImp" style="width:auto"><option>INCLUSÃO</option><option>EXCLUSÃO</option></select>
         <button type="button" class="btn sec mini" id="modelo">Baixar modelo (CSV)</button>
-        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB e MOD (ou Ano fab/Ano mod, ou Ano fabricação/Ano modelo, em colunas separadas), PLACA, CHASSI.</small>
+        <small>A aba pode ter qualquer nome: o sistema usa a que tiver as colunas MARCA, MODELO, PLACA e CHASSI e o ano (FAB e/ou MOD, Ano fab./Ano mod. ou Ano fabricação/Ano modelo, em colunas separadas). Veículo 0 km sem placa só entra como inclusão.</small>
         <div class="erro" id="erroImp" style="flex-basis:100%"></div>
         <ul class="lista-erros" id="listaErros" hidden></ul>
       </div>
+      <div class="aviso" id="avisoAnos" hidden></div>
       <div class="aviso" id="avisoExc" hidden></div>
       <div class="aviso" id="avisoSub" hidden></div>
       <div class="tw"><table id="tabVeiculos">
@@ -280,14 +281,19 @@ const Mock = (() => {
     if (!Array.isArray(vs) || !vs.length || vs.length > 500) fail("Informe de 1 a 500 veículos.");
     const algumCalc = vs.some(v => v.tipo !== "SUBSTITUIÇÃO");
     if (algumCalc && !/^\d{4}-\d{2}-\d{2}$/.test(d.vigencia || "")) fail("Vigência inicial inválida.");
-    const vig = algumCalc ? parse(d.vigencia) : null, usadas = new Set(), linhas = [];
+    const vig = algumCalc ? parse(d.vigencia) : null, usadas = new Set(), chassisUsados = new Set(), linhas = [];
     vs.forEach((v, i) => {
       const n = i + 1, placa = placaNorm(v.placa), chassi = String(v.chassi || "").toUpperCase().trim();
       if (!["INCLUSÃO","EXCLUSÃO","SUBSTITUIÇÃO"].includes(v.tipo)) fail(`Veículo ${n}: tipo de endosso inválido.`);
-      if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placa)) fail(`Veículo ${n}: placa inválida.`);
+      let placaFinal = placa;
+      if (placa === "" || /^[A-Z]{3}0000$/.test(placa)) { // 0 km ainda sem placa: só em inclusão
+        if (v.tipo !== "INCLUSÃO") fail(`Veículo ${n}: a placa é obrigatória na ${v.tipo.toLowerCase()}.`);
+        placaFinal = "SEM PLACA";
+      } else if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placa)) fail(`Veículo ${n}: placa inválida.`);
       if (!/^[A-Z0-9]{17}$/.test(chassi)) fail(`Veículo ${n}: chassi deve ter 17 caracteres.`);
       if (!String(v.marca_modelo || "").trim()) fail(`Veículo ${n}: informe marca/modelo.`);
-      if (usadas.has(placa)) fail(`Placa repetida na solicitação: ${placa}.`); usadas.add(placa);
+      if (placaFinal !== "SEM PLACA" && usadas.has(placaFinal)) fail(`Placa repetida na solicitação: ${placaFinal}.`); usadas.add(placaFinal);
+      if (chassisUsados.has(chassi)) fail(`Chassi repetido na solicitação: ${chassi}.`); chassisUsados.add(chassi);
       const af = parseInt(v.ano_fab), am = parseInt(v.ano_mod);
       if (isNaN(af) || isNaN(am)) fail(`Veículo ${n}: informe o ano de fabricação e o ano do modelo.`);
       if (af < 1950 || af > 2100 || am < 1950 || am > 2100) fail(`Veículo ${n}: ano de fabricação/modelo inválido.`);
@@ -300,7 +306,7 @@ const Mock = (() => {
         try { const r = calcularEndosso({ vigencia: vig, data: parse(v.data_endosso), valorInicial: v.valor_inicial, tipo: v.tipo });
               dias = r.dias; vc = Math.round(r.valor * 100) / 100; } catch (e) { fail(e.message); }
       }
-      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa, chassi, ano_fab: af, ano_mod: am, contrato: String(v.contrato || ""), tipo: v.tipo,
+      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa: placaFinal, chassi, ano_fab: af, ano_mod: am, contrato: String(v.contrato || ""), tipo: v.tipo,
         placa_substituida: ps || null, data_endosso: v.data_endosso || null, valor_inicial: v.tipo === "SUBSTITUIÇÃO" ? null : v.valor_inicial,
         dias, valor_calculado: vc, acionamento: false, valor_final: null, confirmado: false });
     });
@@ -446,7 +452,7 @@ const API = (() => {
   function etapa(n) { $("etapa1").hidden = n !== 1; $("etapa2").hidden = n !== 2; }
   $("irCalculo").onclick = () => {
     const todos = lerVeiculos(), subs = todos.filter(v => v.tp === "SUBSTITUIÇÃO"), vs = todos.filter(v => v.tp !== "SUBSTITUIÇÃO");
-    if (!todos.length || todos.some(v => !v.mm || !v.pl || !v.ch)) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos."; return; }
+    if (!todos.length || todos.some(v => !v.mm || !v.ch || (!v.pl && v.tp !== "INCLUSÃO"))) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos. Só a inclusão de veículo 0 km pode ficar sem placa."; return; }
     const anoOk = a => /^\d{4}$/.test(a) && a >= 1950 && a <= 2100;
     if (todos.some(v => !anoOk(v.af) || !anoOk(v.am))) { $("erro1").textContent = "Informe o ano de fabricação e o ano do modelo (4 dígitos) de todos os veículos."; return; }
     if (subs.some(v => !v.ps)) { $("erro1").textContent = "Informe a placa do veículo substituído."; return; }
@@ -455,7 +461,7 @@ const API = (() => {
     $("linhas").innerHTML = ""; $("mesmaCat").checked = false; $("mesmaData").checked = false;
     vs.forEach(v => {
       const tr = document.createElement("tr"); tr.dataset.tp = v.tp; tr._v = v;
-      tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}</small></td><td>${v.tp}</td>
+      tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl || "SEM PLACA")}</small></td><td>${v.tp}</td>
         <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
         <td class="n r-dias">-</td><td class="n r-val">-</td>`;
       $("linhas").appendChild(tr);
@@ -471,10 +477,11 @@ const API = (() => {
   };
   $("voltar").onclick = () => etapa(1);
 
-  // Importação de planilha (modelo: aba FROTA)
-  const COLS = ["MARCA","MODELO","TIPO","FAB","MOD","PLACA","CHASSI"];
+  // Importação de planilha: qualquer nome de aba; usa a aba que tiver as colunas necessárias
+  const OBRIGATORIAS = ["MARCA","MODELO","PLACA","CHASSI"]; // mais ao menos um dos anos (FAB ou MOD)
   // Aceita FAB/MOD, Ano fab/Ano mod ou Ano fabricação/Ano modelo (sempre em colunas separadas)
-  const ALIAS = { FAB:["FAB","ANO FAB","ANO FABRICACAO","ANO DE FABRICACAO"], MOD:["MOD","ANO MOD","ANO MODELO","ANO DE MODELO"] };
+  const ALIAS = { FAB:["FAB","ANO FAB","ANO FABRICACAO","ANO DE FABRICACAO"], MOD:["MOD","ANO MOD","ANO MODELO","ANO DE MODELO"],
+                  CHASSI:["CHASSI","CHASSIS","N CHASSI","NUMERO DO CHASSI"] };
   const canon = c => { const n = norm(c).replace(/[^A-Z0-9]+/g, " ").trim(); return Object.keys(ALIAS).find(k => ALIAS[k].includes(n)) || norm(c); };
   const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
   $("modelo").onclick = () => {
@@ -505,70 +512,119 @@ const API = (() => {
   async function lerXlsx(buf) {
     const get = await lerZip(buf);
     const wb = xml(await get("xl/workbook.xml")), rels = xml(await get("xl/_rels/workbook.xml.rels"));
-    const aba = [...wb.getElementsByTagName("sheet")].find(s => norm(s.getAttribute("name")) === "FROTA");
-    if (!aba) throw new Error('Aba "FROTA" não encontrada. Use o modelo de planilha.');
-    const rid = aba.getAttribute("r:id") || aba.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
-    let alvo = [...rels.getElementsByTagName("Relationship")].find(r => r.getAttribute("Id") === rid).getAttribute("Target");
-    alvo = alvo.startsWith("/") ? alvo.slice(1) : "xl/" + alvo;
     const ss = await get("xl/sharedStrings.xml");
     const strs = ss ? [...xml(ss).getElementsByTagName("si")].map(si => [...si.getElementsByTagName("t")].map(t => t.textContent).join("")) : [];
-    const linhas = [];
-    for (const row of xml(await get(alvo)).getElementsByTagName("row")) {
-      const r = []; 
-      for (const c of row.getElementsByTagName("c")) {
-        const t = c.getAttribute("t"), v = c.getElementsByTagName("v")[0]?.textContent;
-        r[colIdx(c.getAttribute("r"))] = t === "s" ? strs[+v] : t === "inlineStr" ? c.textContent : v;
+    const abas = [];
+    for (const aba of wb.getElementsByTagName("sheet")) {
+      const rid = aba.getAttribute("r:id") || aba.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+      let alvo = [...rels.getElementsByTagName("Relationship")].find(r => r.getAttribute("Id") === rid).getAttribute("Target");
+      alvo = alvo.startsWith("/") ? alvo.slice(1) : "xl/" + alvo;
+      const linhas = [];
+      for (const row of xml(await get(alvo)).getElementsByTagName("row")) {
+        const r = [];
+        for (const c of row.getElementsByTagName("c")) {
+          const t = c.getAttribute("t"), v = c.getElementsByTagName("v")[0]?.textContent;
+          r[colIdx(c.getAttribute("r"))] = t === "s" ? strs[+v] : t === "inlineStr" ? c.textContent : v;
+        }
+        linhas[+row.getAttribute("r") - 1] = r;
       }
-      linhas[+row.getAttribute("r") - 1] = r;
+      abas.push({ nome: aba.getAttribute("name"), linhas });
     }
-    return linhas;
+    return abas;
+  }
+  // .xls (Excel antigo): lido no servidor
+  async function lerXlsAntigo(f) {
+    if (API.demo) throw new Error("Arquivos .xls (Excel antigo) só são lidos no portal instalado. Na demonstração, salve a planilha como .xlsx.");
+    return (await API.postForm("/importar-xls", {}, { arquivo: f })).abas;
+  }
+  // Identifica o formato pelo conteúdo (não pela extensão): .xlsx é um zip ("PK"), .xls antigo começa com D0 CF
+  async function lerArquivo(f) {
+    if (/\.csv$/i.test(f.name)) return [{ nome: "csv", linhas: lerCsv(await f.text()) }];
+    const cab = new Uint8Array(await f.slice(0, 4).arrayBuffer());
+    if (cab[0] === 0x50 && cab[1] === 0x4B) return lerXlsx(await f.arrayBuffer());
+    if (cab[0] === 0xD0 && cab[1] === 0xCF) return lerXlsAntigo(f);
+    throw new Error("Formato não reconhecido. Use .xlsx, .xls ou .csv.");
   }
   function lerCsv(txt) {
     const sep = (txt.split("\n")[0].match(/;/g) || []).length >= (txt.split("\n")[0].match(/,/g) || []).length ? ";" : ",";
     return txt.replace(/^﻿/, "").split(/\r?\n/).map(l => l.split(sep).map(c => c.replace(/^"|"$/g, "")));
   }
 
-  // Valida com base no modelo; devolve { veiculos, erros }
-  function validarFrota(linhas) {
-    const hi = linhas.findIndex(r => r && r.some(c => norm(c) === "PLACA"));
-    if (hi < 0) return { erros: ["Cabeçalho não encontrado. A planilha precisa ter a coluna PLACA (veja o modelo)."] };
-    const idx = {}; (linhas[hi] || []).forEach((c, i) => { if (c != null) idx[canon(c)] = i; });
-    const falta = COLS.filter(c => !(c in idx));
-    if (falta.length) return { erros: ["Colunas ausentes no modelo: " + falta.map(c => c === "FAB" ? "FAB (ou Ano fab / Ano fabricação)" : c === "MOD" ? "MOD (ou Ano mod / Ano modelo)" : c).join(", ") + "."] };
-    const erros = [], veiculos = [], placas = new Set(), chassis = new Set(), existentes = lerVeiculos();
-    existentes.forEach(v => { placas.add(norm(v.pl).replace(/[- ]/g, "")); chassis.add(norm(v.ch)); });
+  const semPlaca = p => p === "" || /^[A-Z]{3}0000$/.test(p); // 0 km ainda sem placa (vazia ou "AAA0000")
+  const ano = s => String(s ?? "").trim().replace(/\.0+$/, "");
+
+  // Escolhe a aba: a primeira que tiver todas as colunas necessárias, seja qual for o nome
+  function escolherAba(abas) {
+    let primeiraComPlaca = null;
+    for (const aba of abas) {
+      const hi = aba.linhas.findIndex(r => r && r.some(c => norm(c) === "PLACA") && r.some(c => canon(c) === "CHASSI"));
+      if (hi < 0) continue;
+      const idx = {}; aba.linhas[hi].forEach((c, i) => { if (c != null && c !== "") idx[canon(c)] = i; });
+      const falta = OBRIGATORIAS.filter(c => !(c in idx)); if (!("FAB" in idx) && !("MOD" in idx)) falta.push("ANO (FAB ou MOD)");
+      if (!falta.length) return { nome: aba.nome, linhas: aba.linhas, hi, idx };
+      primeiraComPlaca = primeiraComPlaca || { nome: aba.nome, falta };
+    }
+    if (primeiraComPlaca) return { erro: `Aba "${primeiraComPlaca.nome}": colunas ausentes: ${primeiraComPlaca.falta.join(", ")}.` };
+    return { erro: "Não encontrei uma aba com as colunas PLACA e CHASSI (veja o modelo)." };
+  }
+
+  // Valida a planilha; devolve { veiculos, erros, semFab, semMod, semPlaca }
+  function validarFrota(abas, tipo) {
+    const esc_ = escolherAba(abas); if (esc_.erro) return { erros: [esc_.erro] };
+    const { linhas, hi, idx } = esc_, semFab = !("FAB" in idx), semMod = !("MOD" in idx);
+    const erros = [], veiculos = [], placas = new Set(), chassis = new Set();
+    let nSem = 0;
+    lerVeiculos().forEach(v => { const p = norm(v.pl).replace(/[- ]/g, ""); if (p) placas.add(p); chassis.add(norm(v.ch)); });
     for (let i = hi + 1; i < linhas.length; i++) {
       const r = linhas[i]; if (!r) continue;
       const g = c => String(r[idx[c]] ?? "").trim(), n = i + 1;
       const marca = g("MARCA"), modelo = g("MODELO"), pl = norm(g("PLACA")).replace(/[- ]/g, ""), ch = norm(g("CHASSI"));
       if (!marca && !modelo && !pl && !ch) continue; // linha vazia ou só de totais/fórmulas
-      const e = [];
+      const e = [], sem = semPlaca(pl);
       if (!marca || !modelo) e.push("marca/modelo obrigatórios");
-      if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(pl)) e.push("placa inválida (" + (pl || "vazia") + ")");
+      if (sem) { if (tipo !== "INCLUSÃO") e.push("placa obrigatória em " + tipo.toLowerCase()); }
+      else if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(pl)) e.push("placa inválida (" + pl + ")");
       else if (placas.has(pl)) e.push("placa repetida (" + pl + ")");
       if (!/^[A-Z0-9]{17}$/.test(ch)) e.push("chassi deve ter 17 caracteres");
       else if (chassis.has(ch)) e.push("chassi repetido");
-      for (const c of ["FAB","MOD"]) { const v = g(c); if (!(/^\d{4}$/.test(v) && v >= 1950 && v <= 2100)) e.push(c + (v ? " inválido (" + v + ")" : " obrigatório")); }
+      for (const c of ["FAB","MOD"]) if (c in idx) { const v = ano(g(c)); if (!(/^\d{4}$/.test(v) && v >= 1950 && v <= 2100)) e.push(c + (v ? " inválido (" + v + ")" : " obrigatório")); }
       if (e.length) erros.push(`Linha ${n}: ` + e.join("; "));
-      else { placas.add(pl); chassis.add(ch); veiculos.push({ mm: (marca + " " + modelo).trim(), pl, ch, af: g("FAB"), am: g("MOD") }); }
+      else { if (!sem) placas.add(pl); else nSem++; chassis.add(ch);
+             veiculos.push({ mm: (marca + " " + modelo).trim(), pl: sem ? "" : pl, ch, af: semFab ? "" : ano(g("FAB")), am: semMod ? "" : ano(g("MOD")) }); }
     }
     if (!veiculos.length && !erros.length) erros.push("Nenhum veículo encontrado na planilha.");
-    return { veiculos, erros };
+    return { veiculos, erros, semFab, semMod, semPlaca: nSem };
   }
+
+  // Avisos depois de importar: o que a planilha não trouxe e como completar
+  function avisosImportacao(r) {
+    const m = [];
+    if (r.semPlaca) m.push(`<p>${r.semPlaca} veículo(s) <b>sem placa</b> (0 km): entram só como inclusão e são identificados pelo chassi.</p>`);
+    if (r.semFab) m.push('<p>A planilha <b>não tem o ano de fabricação</b>. Preencha na tabela ou <button type="button" class="btn sec mini" data-de="am" data-para="af">usar o ano do modelo como ano de fabricação</button></p>');
+    if (r.semMod) m.push('<p>A planilha <b>não tem o ano do modelo</b>. Preencha na tabela ou <button type="button" class="btn sec mini" data-de="af" data-para="am">usar o ano de fabricação como ano do modelo</button></p>');
+    $("avisoAnos").innerHTML = m.join(""); $("avisoAnos").hidden = !m.length;
+  }
+  $("avisoAnos").onclick = e => {
+    const b = e.target.closest("button[data-de]"); if (!b) return;
+    for (const tr of $("veiculos").children) { const de = tr.querySelector("." + (b.dataset.de === "am" ? "am" : "af")), para = tr.querySelector("." + (b.dataset.para === "af" ? "af" : "am")); if (!para.value && de.value) para.value = de.value; }
+    b.closest("p").textContent = "Anos preenchidos. Confira na tabela antes de continuar.";
+  };
+
   $("arq").onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
-    $("erroImp").textContent = ""; $("listaErros").hidden = true; $("listaErros").innerHTML = "";
+    $("erroImp").textContent = ""; $("erroImp").style.color = ""; $("listaErros").hidden = true; $("listaErros").innerHTML = ""; $("avisoAnos").hidden = true;
     try {
-      const linhas = /\.csv$/i.test(f.name) ? lerCsv(await f.text()) : await lerXlsx(await f.arrayBuffer());
-      const { veiculos, erros } = validarFrota(linhas);
-      if (erros.length) {
-        $("erroImp").textContent = `Planilha fora do modelo: ${erros.length} problema(s). Nenhum veículo foi importado.`;
-        $("listaErros").innerHTML = erros.map(x => `<li>${esc(x)}</li>`).join(""); $("listaErros").hidden = false;
+      const tipo = $("tipoImp").value;
+      const r = validarFrota(await lerArquivo(f), tipo);
+      if (r.erros.length) {
+        $("erroImp").textContent = `Planilha fora do modelo: ${r.erros.length} problema(s). Nenhum veículo foi importado.`;
+        $("listaErros").innerHTML = r.erros.map(x => `<li>${esc(x)}</li>`).join(""); $("listaErros").hidden = false;
       } else {
         const vazio = lerVeiculos().length === 1 && !lerVeiculos()[0].mm && !lerVeiculos()[0].pl && !lerVeiculos()[0].ch;
         if (vazio) $("veiculos").innerHTML = "";
-        veiculos.forEach(v => addVeiculo({ ...v, tp: $("tipoImp").value })); avisoSub(); syncContrato();
-        $("erroImp").style.color = "inherit"; $("erroImp").textContent = `${veiculos.length} veículo(s) importado(s) como ${$("tipoImp").value.toLowerCase()}.`;
+        r.veiculos.forEach(v => addVeiculo({ ...v, tp: tipo })); avisoSub(); syncContrato();
+        $("erroImp").style.color = "inherit"; $("erroImp").textContent = `${r.veiculos.length} veículo(s) importado(s) como ${tipo.toLowerCase()}.`;
+        avisosImportacao(r);
       }
     } catch (err) { $("erroImp").textContent = "Não foi possível ler a planilha: " + err.message; }
     e.target.value = "";
@@ -635,7 +691,7 @@ const API = (() => {
     $("veiculos").innerHTML = ""; addVeiculo(); $("repContrato").checked = false;
     $("linhas").innerHTML = ""; $("vig").value = ""; $("mesmaCat").checked = $("mesmaData").checked = false;
     $("termo").disabled = false; $("prosseguir").disabled = false; $("erroEnvio").textContent = "";
-    ["erro1","erroImp"].forEach(i => $(i).textContent = ""); $("listaErros").hidden = true; $("avisoSub").hidden = $("avisoExc").hidden = true;
+    ["erro1","erroImp"].forEach(i => $(i).textContent = ""); $("listaErros").hidden = true; $("avisoSub").hidden = $("avisoExc").hidden = $("avisoAnos").hidden = true;
     subsPend = []; total = null; resetTermo(); etapa(1); avisoSub();
   }
 </script>
@@ -686,6 +742,8 @@ async function rota() {
   }
 }
 window.addEventListener("hashchange", rota);
+// Clicar no item do menu da tela atual reabre a tela (ex.: "Nova solicitação" volta a um formulário limpo)
+$("nav").addEventListener("click", e => { const a = e.target.closest("a"); if (a && a.getAttribute("href") === location.hash) { e.preventDefault(); rota(); } });
 
 async function entrar(user) { USER = user; montarMenu(); if (!location.hash || location.hash === "#/login") location.hash = ""; await rota(); }
 async function sair(silencioso) {

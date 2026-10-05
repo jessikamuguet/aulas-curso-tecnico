@@ -33,6 +33,8 @@ EXPEDIENTE = (8, 17)  # horas úteis: das 08:00 às 17:00, seg a sex
 TIPOS = ("INCLUSÃO", "EXCLUSÃO", "SUBSTITUIÇÃO")
 MAX_PDF = 10 * 1024 * 1024  # 10 MB por anexo
 ANEXOS = {"endosso": "Endosso", "boleto": "Boleto"}
+SEM_PLACA = "SEM PLACA"  # veículo 0 km ainda sem placa (só inclusão); identificado pelo chassi
+MAX_PLANILHA = 5 * 1024 * 1024  # importação de .xls
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -404,7 +406,7 @@ def criar_solicitacao():
     veics = d.get("veiculos")
     if not isinstance(veics, list) or not veics or len(veics) > 500:
         return erro("Informe de 1 a 500 veículos.")
-    placas, linhas = set(), []
+    placas, chassis, linhas = set(), set(), []
     try:
         vig = _data(d.get("vigencia"), "Vigência inicial") if any(v.get("tipo") != "SUBSTITUIÇÃO" for v in veics) else None
         for i, v in enumerate(veics, 1):
@@ -414,15 +416,22 @@ def criar_solicitacao():
             placa = re.sub(r"[- ]", "", str(v.get("placa", "")).upper())
             chassi = str(v.get("chassi", "")).strip().upper()
             mm = str(v.get("marca_modelo", "")).strip()
-            if not re.fullmatch(r"[A-Z]{3}\d[A-Z0-9]\d{2}", placa):
+            if placa == "" or re.fullmatch(r"[A-Z]{3}0000", placa):  # 0 km ainda sem placa: só em inclusão
+                if tipo != "INCLUSÃO":
+                    raise ValueError(f"Veículo {i}: a placa é obrigatória na {tipo.lower()}.")
+                placa = SEM_PLACA
+            elif not re.fullmatch(r"[A-Z]{3}\d[A-Z0-9]\d{2}", placa):
                 raise ValueError(f"Veículo {i}: placa inválida.")
             if not re.fullmatch(r"[A-Z0-9]{17}", chassi):
                 raise ValueError(f"Veículo {i}: chassi deve ter 17 caracteres.")
             if not mm:
                 raise ValueError(f"Veículo {i}: informe marca/modelo.")
-            if placa in placas:
+            if placa != SEM_PLACA and placa in placas:
                 raise ValueError(f"Placa repetida na solicitação: {placa}.")
+            if chassi in chassis:
+                raise ValueError(f"Chassi repetido na solicitação: {chassi}.")
             placas.add(placa)
+            chassis.add(chassi)
             try:
                 af, am = int(v.get("ano_fab")), int(v.get("ano_mod"))
             except (TypeError, ValueError):
@@ -513,6 +522,37 @@ def devolver(sid):
     if sp_ativo():
         arquivar_sharepoint(sid)  # falha aqui não bloqueia a devolução: o admin vê o erro e pode tentar de novo
     return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
+
+
+@app.post("/api/importar-xls")
+def importar_xls():
+    """Lê uma planilha .xls (Excel antigo) e devolve o conteúdo de todas as abas; a validação é feita na tela."""
+    _, e = exige_login()
+    if e:
+        return e
+    f = request.files.get("arquivo")
+    if not f:
+        return erro("Envie o arquivo da planilha.")
+    dados = f.read(MAX_PLANILHA + 1)
+    if len(dados) > MAX_PLANILHA:
+        return erro("A planilha passa de 5 MB.")
+    try:
+        import xlrd
+        livro = xlrd.open_workbook(file_contents=dados)
+    except Exception:  # arquivo corrompido, protegido por senha ou não é .xls
+        return erro("Não foi possível ler o arquivo .xls. Salve a planilha como .xlsx e tente de novo.")
+
+    def celula(v):
+        if v == "" or v is None:
+            return None
+        return str(int(v)) if isinstance(v, float) and v == int(v) else str(v)
+
+    abas = []
+    for aba in livro.sheets():
+        if aba.nrows > 5000 or aba.ncols > 200:
+            continue
+        abas.append({"nome": aba.name, "linhas": [[celula(v) for v in aba.row_values(i)] for i in range(aba.nrows)]})
+    return jsonify(abas=abas)
 
 
 @app.get("/api/solicitacoes/<int:sid>/anexos/<tipo>")
