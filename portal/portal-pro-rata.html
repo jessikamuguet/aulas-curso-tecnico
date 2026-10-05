@@ -116,7 +116,7 @@
 // custo devido = custo dia * dias
 // saldo a vencer = valor inicial - custo devido
 // INCLUSÃO: valor = saldo do veículo incluído
-// EXCLUSÃO: valor = -(saldo do veículo excluído)  (estorno)
+// EXCLUSÃO: valor = -(saldo do veículo excluído), sempre negativo (estorno)
 // SUBSTITUIÇÃO: não é calculada no portal (análise interna da placa antes)
 const BASE_DIAS = 365;
 
@@ -139,7 +139,7 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
   if (dias > BASE_DIAS) throw new Error("A data do endosso passa de 365 dias da vigência.");
   const novo = saldoProRata(valorInicial, dias);
   let valor;
-  if (tipo === "EXCLUSÃO") valor = -novo.saldo;
+  if (tipo === "EXCLUSÃO") valor = -Math.abs(novo.saldo); // exclusão é sempre negativa
   else valor = novo.saldo;
   return { dias, custoDia: novo.custoDia, custoDevido: novo.custoDevido, valor };
 }
