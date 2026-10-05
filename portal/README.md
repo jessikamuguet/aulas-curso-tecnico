@@ -47,6 +47,30 @@ Para regerar depois de mudar algo em `static/`: `python build_demo.py`.
   próximo dia útil às 08:00. **Feriados não são considerados.** Para mudar, ajuste `PRAZO_HORAS_UTEIS` e `EXPEDIENTE` em `app.py`
   (e o padrão `horas = 48` em `static/prorata.js`).
 
+## Arquivo dos PDFs no SharePoint (opcional)
+
+Os PDFs ficam sempre no banco do portal (o cliente baixa daqui). Se configurado, uma **cópia de arquivo** é enviada à
+biblioteca **Comercial** do SharePoint, em `<ano>/ENDOSSOS/Solicitação 00012 - Nome do cliente/Endosso <nº>.pdf` (e `Boleto <nº>.pdf`).
+Se o envio falhar, a devolução ao cliente **não** é bloqueada: o admin vê "não arquivado" com o motivo e o botão
+*Tentar novamente*. O portal continua sendo a fonte dos prazos e do andamento; o SharePoint é só o arquivo.
+
+Configuração (quem administra o Microsoft 365 / TI):
+
+1. No **Microsoft Entra ID** → *Registros de aplicativo* → novo registro. Anote o *ID do locatário (tenant)* e o *ID do aplicativo (client)*.
+2. *Certificados e segredos* → novo segredo do cliente (anote o valor, ele só aparece uma vez).
+3. *Permissões de API* → Microsoft Graph → **Permissões de aplicativo** → `Sites.Selected` → conceder consentimento do administrador.
+4. Conceder ao app permissão de **escrita apenas ao site** que contém a biblioteca (via Graph `POST /sites/{id}/permissions`
+   com role `write`, ou pelo PowerShell `Grant-PnPAzureADAppSitePermission`). Assim o app não enxerga o resto da empresa.
+5. No servidor do portal, defina as variáveis (nunca coloque o segredo no código nem no Git):
+
+```
+SP_TENANT_ID=...   SP_CLIENT_ID=...   SP_CLIENT_SECRET=...
+SP_HOST=gruposvc.sharepoint.com   SP_LIBRARY=Comercial   SP_PASTA=ENDOSSOS
+SP_SITE_PATH=       # vazio = site raiz; use /sites/NomeDoSite se a biblioteca estiver em um site
+```
+
+Tamanho: até 10 MB por PDF (arquivos acima de 4 MB são enviados em partes).
+
 ## Segurança (resumo)
 
 Senhas com hash (werkzeug), sessão por cookie HttpOnly/SameSite, bloqueio de 1 min após 5 tentativas erradas, cliente só vê

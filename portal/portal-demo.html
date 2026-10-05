@@ -760,9 +760,13 @@ async function telaDetalhe(id) {
   else if (s.status === "em_emissao") corpo = `<div class="aviso"><b>Solicitação em processo de emissão.</b></div>${tabelaSolicitada(s)}`;
   else if (s.status === "devolvida") corpo = formCiente(s);
   else corpo = tabelaFinal(s, true);
-  $("detalhe").innerHTML = `<div class="card">${cab}${blocoAnexos(s)}${corpo}</div>`;
+  $("detalhe").innerHTML = `<div class="card">${cab}${blocoAnexos(s)}${blocoSp(s)}${corpo}</div>`;
   if (admin && s.status === "em_emissao") ligarDevolver(s);
   if (!admin && s.status === "devolvida") ligarCiente(s);
+  if ($("reenviarSp")) $("reenviarSp").onclick = async () => {
+    $("reenviarSp").disabled = true;
+    try { await API.post(`/solicitacoes/${s.id}/arquivar`); await telaDetalhe(s.id); } catch (e) { alert(e.message); await telaDetalhe(s.id); }
+  };
   show("vDetalhe");
 }
 
@@ -770,6 +774,14 @@ const NOME_ANEXO = { endosso: "Endosso", boleto: "Boleto" };
 function blocoAnexos(s) {
   if (!s.anexos || !s.anexos.length) return "";
   return `<div class="docs"><b>Documentos</b>${s.anexos.map(a => `<a class="doc" href="${API.urlAnexo(s.id, a.tipo)}" target="_blank" rel="noopener"${API.demo ? ` download="${esc(a.nome)}"` : ""}>${NOME_ANEXO[a.tipo]} (PDF)</a>`).join("")}</div>`;
+}
+// Admin: situação do arquivo dos PDFs no SharePoint
+function blocoSp(s) {
+  if (USER.role !== "admin" || !USER.sharepoint || !s.anexos || !s.anexos.length) return "";
+  const lin = s.anexos.map(a => a.sp_url && a.sp_url.startsWith("https://")
+    ? `${NOME_ANEXO[a.tipo]}: <a href="${esc(a.sp_url)}" target="_blank" rel="noopener">abrir no SharePoint</a>`
+    : `${NOME_ANEXO[a.tipo]}: <span class="tag bad">não arquivado</span> <small>${esc(a.sp_erro || "")}</small>`).join("<br>");
+  return `<div class="docs"><b>Arquivo no SharePoint</b><div>${lin}</div>${s.anexos.some(a => !a.sp_url) ? '<button class="btn sec mini" id="reenviarSp">Tentar novamente</button>' : ""}</div>`;
 }
 const tipoTag = v => v.tipo[0] + v.tipo.slice(1).toLowerCase();
 function tabelaSolicitada(s) {

@@ -4,6 +4,8 @@ Rodar:  pip install -r requirements.txt && python app.py
 Variáveis opcionais: ADMIN_PASSWORD, SECRET_KEY, PORT, HTTPS=1 (cookie seguro), PORTAL_DB
 """
 import json, os, re, secrets, sqlite3, time
+from urllib.parse import quote
+import requests
 from datetime import date, datetime, timedelta, timezone
 from flask import Flask, Response, g, jsonify, request, session, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -53,6 +55,7 @@ CREATE TABLE IF NOT EXISTS veiculos (
 CREATE TABLE IF NOT EXISTS anexos (
   id INTEGER PRIMARY KEY, solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes(id),
   tipo TEXT NOT NULL CHECK (tipo IN ('endosso','boleto')), nome TEXT, conteudo BLOB NOT NULL, criado_em TEXT NOT NULL,
+  sp_url TEXT, sp_erro TEXT,
   UNIQUE (solicitacao_id, tipo));
 """
 
@@ -75,6 +78,9 @@ def _close(_exc):
 def init_db():
     con = sqlite3.connect(DB_PATH)
     con.executescript(SCHEMA)
+    for col in ('sp_url', 'sp_erro'):  # bancos criados antes da integração com SharePoint
+        if col not in {r[1] for r in con.execute('PRAGMA table_info(anexos)')}:
+            con.execute(f'ALTER TABLE anexos ADD COLUMN {col} TEXT')
     if not con.execute("SELECT 1 FROM users WHERE role='admin'").fetchone():
         senha = os.environ.get("ADMIN_PASSWORD") or secrets.token_urlsafe(9)
         con.execute("INSERT INTO users(username,nome,password_hash,role) VALUES('admin','Administrador',?, 'admin')",
@@ -83,6 +89,93 @@ def init_db():
         print(f"\n>>> Usuário admin criado. Login: admin | Senha: {senha}\n"
               ">>> Guarde esta senha (ela não será mostrada de novo).\n")
     con.close()
+
+
+# ---------------------------------------------------------------- SharePoint (arquivo dos PDFs)
+# Desligado por padrão. Ligue definindo SP_TENANT_ID, SP_CLIENT_ID e SP_CLIENT_SECRET (app registrado no Microsoft Entra ID,
+# permissão Graph "Sites.Selected" com acesso de escrita ao site). Os PDFs continuam no banco; o SharePoint recebe uma cópia.
+SP_HOST = os.environ.get("SP_HOST", "gruposvc.sharepoint.com")
+SP_SITE_PATH = os.environ.get("SP_SITE_PATH", "")  # "" = site raiz; ex.: "/sites/Comercial"
+SP_LIBRARY = os.environ.get("SP_LIBRARY", "Comercial")
+SP_PASTA = os.environ.get("SP_PASTA", "ENDOSSOS")  # destino: <ano>/<SP_PASTA>/Solicitação 00001 - Cliente/
+GRAPH = os.environ.get("SP_GRAPH_URL", "https://graph.microsoft.com/v1.0")
+LOGIN = os.environ.get("SP_LOGIN_URL", "https://login.microsoftonline.com")
+_tok, _drive = {"v": None, "exp": 0}, {"id": None}
+
+
+def sp_ativo():
+    return all(os.environ.get(k) for k in ("SP_TENANT_ID", "SP_CLIENT_ID", "SP_CLIENT_SECRET"))
+
+
+def _sp_token():
+    if _tok["v"] and _tok["exp"] > time.time() + 60:
+        return _tok["v"]
+    r = requests.post(f"{LOGIN}/{os.environ['SP_TENANT_ID']}/oauth2/v2.0/token", timeout=20, data={
+        "grant_type": "client_credentials", "client_id": os.environ["SP_CLIENT_ID"],
+        "client_secret": os.environ["SP_CLIENT_SECRET"], "scope": "https://graph.microsoft.com/.default"})
+    if not r.ok:
+        raise RuntimeError(f"Login no Microsoft falhou ({r.status_code}).")
+    j = r.json()
+    _tok.update(v=j["access_token"], exp=time.time() + int(j.get("expires_in", 3600)))
+    return _tok["v"]
+
+
+def _graph(method, path, **kw):
+    h = {"Authorization": "Bearer " + _sp_token(), **kw.pop("headers", {})}
+    r = requests.request(method, GRAPH + path, headers=h, timeout=60, **kw)
+    if not r.ok:
+        raise RuntimeError(f"SharePoint {r.status_code}: {r.text[:200]}")
+    return r
+
+
+def _sp_drive():
+    if _drive["id"]:
+        return _drive["id"]
+    site = _graph("GET", f"/sites/{SP_HOST}:{SP_SITE_PATH}" if SP_SITE_PATH else f"/sites/{SP_HOST}").json()["id"]
+    drives = _graph("GET", f"/sites/{site}/drives").json().get("value", [])
+    alvo = next((d for d in drives if d.get("name", "").lower() == SP_LIBRARY.lower()
+                 or d.get("webUrl", "").rstrip("/").lower().endswith("/" + SP_LIBRARY.lower())), None)
+    if not alvo:
+        raise RuntimeError(f'Biblioteca "{SP_LIBRARY}" não encontrada (existem: {", ".join(d.get("name", "?") for d in drives)}).')
+    _drive["id"] = alvo["id"]
+    return alvo["id"]
+
+
+def _sp_nome(s):
+    return re.sub(r'[\\/:*?"<>|#%~&{}]+', "_", str(s)).strip(" .")[:100] or "_"
+
+
+def sp_enviar(caminho, conteudo):
+    """Envia um arquivo para a biblioteca (cria as pastas que faltarem) e devolve o link no SharePoint."""
+    drive, p = _sp_drive(), quote(caminho)
+    if len(conteudo) <= 4 * 1024 * 1024:
+        r = _graph("PUT", f"/drives/{drive}/root:/{p}:/content?@microsoft.graph.conflictBehavior=replace",
+                   data=conteudo, headers={"Content-Type": "application/pdf"})
+        return r.json()["webUrl"]
+    url = _graph("POST", f"/drives/{drive}/root:/{p}:/createUploadSession",
+                 json={"item": {"@microsoft.graph.conflictBehavior": "replace"}}).json()["uploadUrl"]
+    passo = 320 * 1024 * 10  # múltiplo de 320 KiB, exigência do Graph
+    for ini in range(0, len(conteudo), passo):
+        parte = conteudo[ini:ini + passo]
+        r = requests.put(url, data=parte, timeout=120, headers={
+            "Content-Range": f"bytes {ini}-{ini + len(parte) - 1}/{len(conteudo)}"})
+        if r.status_code not in (200, 201, 202):
+            raise RuntimeError(f"SharePoint {r.status_code}: {r.text[:200]}")
+    return r.json()["webUrl"]
+
+
+def arquivar_sharepoint(sid):
+    """Copia os PDFs da solicitação para o SharePoint. Nunca levanta erro: registra o resultado por anexo."""
+    s = db().execute("SELECT s.*, u.nome AS cliente FROM solicitacoes s JOIN users u ON u.id=s.user_id WHERE s.id=?", (sid,)).fetchone()
+    pasta = f"{s['criado_em'][:4]}/{SP_PASTA}/Solicitação {sid:05d} - {_sp_nome(s['cliente'])}"
+    for a in db().execute("SELECT * FROM anexos WHERE solicitacao_id=?", (sid,)).fetchall():
+        arq = f"{ANEXOS[a['tipo']]} {_sp_nome(s['numero_endosso'] or sid)}.pdf"
+        try:
+            url, erro_ = sp_enviar(f"{pasta}/{arq}", a["conteudo"]), None
+        except Exception as ex:  # rede, permissão, biblioteca inexistente...
+            url, erro_ = None, str(ex)[:300]
+        db().execute("UPDATE anexos SET sp_url=?, sp_erro=? WHERE id=?", (url, erro_, a["id"]))
+    db().commit()
 
 
 # ---------------------------------------------------------------- regras
@@ -165,7 +258,11 @@ def serializa(s):
     vs = [dict(v, acionamento=bool(v["acionamento"]), confirmado=bool(v["confirmado"])) for v in veics]
     soma = lambda k: round(sum(v[k] or 0 for v in vs), 2)
     anexos = [dict(r) for r in db().execute(
-        "SELECT tipo, nome, length(conteudo) AS tamanho FROM anexos WHERE solicitacao_id=? ORDER BY tipo = 'boleto'", (s["id"],))]
+        "SELECT tipo, nome, length(conteudo) AS tamanho, sp_url, sp_erro FROM anexos WHERE solicitacao_id=? ORDER BY tipo = 'boleto'", (s["id"],))]
+    quem = usuario()
+    if not (quem and quem["role"] == "admin"):  # cliente não vê dados internos do SharePoint
+        for x in anexos:
+            x.pop("sp_url"), x.pop("sp_erro")
     return dict(s, usuario=dict(u), veiculos=vs, anexos=anexos, total_calculado=soma("valor_calculado"), total_final=soma("valor_final"))
 
 
@@ -189,7 +286,8 @@ def login():
     _falhas.pop(chave, None)
     session.clear()
     session["uid"] = u["id"]
-    return jsonify(user=dict(id=u["id"], nome=u["nome"], username=u["username"], role=u["role"]))
+    return jsonify(user=dict(id=u["id"], nome=u["nome"], username=u["username"], role=u["role"],
+                             sharepoint=sp_ativo() and u["role"] == "admin"))
 
 
 @app.post("/api/logout")
@@ -203,7 +301,8 @@ def me():
     u, e = exige_login()
     if e:
         return e
-    return jsonify(user=dict(id=u["id"], nome=u["nome"], username=u["username"], role=u["role"]))
+    return jsonify(user=dict(id=u["id"], nome=u["nome"], username=u["username"], role=u["role"],
+                             sharepoint=sp_ativo() and u["role"] == "admin"))
 
 
 # ---------------------------------------------------------------- usuários (admin)
@@ -378,6 +477,8 @@ def devolver(sid):
     db().execute("UPDATE solicitacoes SET status='devolvida', numero_endosso=?, observacao=?, devolvida_em=? WHERE id=?",
                  (numero[:60], str(d.get("observacao", "")).strip()[:2000], iso(agora()), sid))
     db().commit()
+    if sp_ativo():
+        arquivar_sharepoint(sid)  # falha aqui não bloqueia a devolução: o admin vê o erro e pode tentar de novo
     return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
 
 
@@ -395,6 +496,22 @@ def baixar_anexo(sid, tipo):
     r.headers["X-Content-Type-Options"] = "nosniff"
     r.headers["Cache-Control"] = "private, no-store"
     return r
+
+
+@app.post("/api/solicitacoes/<int:sid>/arquivar")
+def reenviar_sharepoint(sid):
+    _, e = exige_login(admin=True)
+    if e:
+        return e
+    s = db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()
+    if not s:
+        return erro("Solicitação não encontrada.", 404)
+    if not sp_ativo():
+        return erro("A integração com o SharePoint não está configurada.")
+    if s["status"] == "em_emissao":
+        return erro("Devolva o endosso antes de arquivar.", 409)
+    arquivar_sharepoint(sid)
+    return jsonify(solicitacao=serializa(s))
 
 
 @app.errorhandler(413)
