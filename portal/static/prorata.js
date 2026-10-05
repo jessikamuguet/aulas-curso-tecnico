@@ -34,13 +34,20 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
 
 
 
-// Prazo de retorno: 2 dias úteis (48h úteis) a partir da solicitação, horário de Brasília.
-// Sáb/dom não contam (pedido no fim de semana começa na segunda 00:00); feriados não são considerados.
-function prazoDiasUteis(inicio, dias = 2) {
+// Prazo de retorno: 48 horas úteis (seg a sex, das 08:00 às 17:00, horário de Brasília) a partir da solicitação.
+// Pedido fora do expediente começa a contar no próximo dia útil às 08:00. Feriados não são considerados.
+function prazoHorasUteis(inicio, horas = 48) {
+  const H0 = 8, H1 = 17;
   let d = new Date(inicio.getTime() - 3 * 3600e3); // relógio de Brasília nos campos UTC
-  const w0 = d.getUTCDay();
-  if (w0 === 0 || w0 === 6) d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + (w0 === 6 ? 2 : 1)));
-  for (let n = 0; n < dias;) { d = new Date(d.getTime() + 86400e3); const w = d.getUTCDay(); if (w !== 0 && w !== 6) n++; }
-  return new Date(d.getTime() + 3 * 3600e3);
+  const em = (dt, h) => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), h));
+  const util = dt => dt.getUTCDay() !== 0 && dt.getUTCDay() !== 6;
+  const proxDia = dt => { let n = em(dt, H0); do { n = new Date(n.getTime() + 86400e3); } while (!util(n)); return n; };
+  if (!util(d) || d >= em(d, H1)) d = proxDia(d); else if (d < em(d, H0)) d = em(d, H0);
+  let resto = horas * 3600e3;
+  for (;;) {
+    const disp = em(d, H1) - d;
+    if (resto <= disp) return new Date(d.getTime() + resto + 3 * 3600e3);
+    resto -= disp; d = proxDia(d);
+  }
 }
-if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso, prazoDiasUteis };
+if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso, prazoHorasUteis };

@@ -12,7 +12,8 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PORTAL_DB", os.path.join(BASE, "portal.db"))
 SP = timezone(timedelta(hours=-3))  # horário de Brasília (sem horário de verão)
 BASE_DIAS = 365
-PRAZO_DIAS_UTEIS = 2  # 48h úteis
+PRAZO_HORAS_UTEIS = 48  # prazo para devolver o endosso
+EXPEDIENTE = (8, 17)  # horas úteis: das 08:00 às 17:00, seg a sex
 TIPOS = ("INCLUSÃO", "EXCLUSÃO", "SUBSTITUIÇÃO")
 
 app = Flask(__name__, static_folder="static", static_url_path="")
@@ -87,18 +88,36 @@ def iso(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def prazo_dias_uteis(inicio, dias=PRAZO_DIAS_UTEIS):
-    """Prazo = início + N dias úteis (sáb/dom não contam; feriados não são considerados).
-    Pedido feito no fim de semana começa a contar na segunda-feira, 00:00."""
+def prazo_horas_uteis(inicio, horas=PRAZO_HORAS_UTEIS):
+    """Prazo = início + N horas úteis. Hora útil: seg a sex, das 08:00 às 17:00 (horário de Brasília).
+    Pedido fora do expediente começa a contar no próximo dia útil às 08:00. Feriados não são considerados."""
+    def util(d):
+        return d.weekday() < 5
+
+    def abre(d):
+        return d.replace(hour=EXPEDIENTE[0], minute=0, second=0, microsecond=0)
+
+    def fecha(d):
+        return d.replace(hour=EXPEDIENTE[1], minute=0, second=0, microsecond=0)
+
+    def proximo_dia_util(d):
+        d = abre(d) + timedelta(days=1)
+        while not util(d):
+            d += timedelta(days=1)
+        return d
+
     d = inicio.astimezone(SP)
-    if d.weekday() >= 5:
-        d = (d + timedelta(days=7 - d.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    n = 0
-    while n < dias:
-        d += timedelta(days=1)
-        if d.weekday() < 5:
-            n += 1
-    return d
+    if not util(d) or d >= fecha(d):
+        d = proximo_dia_util(d)
+    elif d < abre(d):
+        d = abre(d)
+    resto = timedelta(hours=horas)
+    while True:
+        disponivel = fecha(d) - d
+        if resto <= disponivel:
+            return d + resto
+        resto -= disponivel
+        d = proximo_dia_util(d)
 
 
 def calcular(tipo, vigencia, data_endosso, valor_inicial):
@@ -287,7 +306,7 @@ def criar_solicitacao():
         return erro(str(ex) if isinstance(ex, ValueError) and str(ex) else "Dados inválidos na solicitação.")
     agora_ = agora()
     cur = db().execute("INSERT INTO solicitacoes(user_id,criado_em,prazo_em,vigencia) VALUES(?,?,?,?)",
-                       (u["id"], iso(agora_), iso(prazo_dias_uteis(agora_)), vig.isoformat() if vig else None))
+                       (u["id"], iso(agora_), iso(prazo_horas_uteis(agora_)), vig.isoformat() if vig else None))
     sid = cur.lastrowid
     db().executemany("""INSERT INTO veiculos(solicitacao_id,marca_modelo,placa,chassi,contrato,tipo,
                         placa_substituida,data_endosso,valor_inicial,dias,valor_calculado) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",

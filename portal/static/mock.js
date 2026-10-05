@@ -49,7 +49,7 @@ const Mock = (() => {
         dias, valor_calculado: vc, acionamento: false, valor_final: null, confirmado: false });
     });
     const agora = new Date();
-    const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoDiasUteis(agora).toISOString(), vigencia: d.vigencia || null,
+    const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null,
       status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, ciente_em: null, divergencia: null, veiculos: linhas };
     st.sols.push(s); save(); return { solicitacao: ser(s) };
   }

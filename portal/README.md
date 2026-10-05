@@ -40,8 +40,10 @@ Para regerar depois de mudar algo em `static/`: `python build_demo.py`.
 - **Exclusão:** sempre negativa. Antes de restituir é preciso avaliar se a placa teve acionamento: o admin marca
   *Teve acionamento* e o valor vira R$ 0,00 (sem restituição). O valor mostrado ao cliente na solicitação é só estimativa.
 - **Substituição:** não é calculada no portal. A placa passa por análise interna e o admin informa o valor ao devolver.
-- **Prazo:** 48h úteis = 2 dias úteis a partir da solicitação, no horário de Brasília. Sábado e domingo não contam
-  (pedido no fim de semana começa a contar na segunda 00:00). **Feriados não são considerados.**
+- **Prazo:** 48 horas úteis a partir da solicitação. Hora útil = segunda a sexta, das 08:00 às 17:00 (horário de Brasília),
+  ou seja, 9h por dia: 48h úteis são 5 dias úteis e 3h. Pedido fora do expediente (noite, fim de semana) começa a contar no
+  próximo dia útil às 08:00. **Feriados não são considerados.** Para mudar, ajuste `PRAZO_HORAS_UTEIS` e `EXPEDIENTE` em `app.py`
+  (e o padrão `horas = 48` em `static/prorata.js`).
 
 ## Segurança (resumo)
 
