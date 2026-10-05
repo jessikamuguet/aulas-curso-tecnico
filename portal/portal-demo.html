@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Portal de Movimentações | Endossos</title>
 <style>/* Cores extraídas do logo helppi.me */
-  :root { --brand:#f87101; --accent:#7c3aed; --bg:#000; --card:#111114; --text:#fff; --muted:#a1a1aa; --line:#ffffff2a; }
-  @media (prefers-color-scheme: light) { :root { --bg:#f5f5f7; --card:#fff; --text:#18181b; --muted:#6b6b76; --line:#0002; } }
+  :root { --brand:#f87101; --accent:#7c3aed; --bg:#000; --card:#111114; --text:#fff; --muted:#a1a1aa; --line:#ffffff2a; color-scheme:dark; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg:#f5f5f7; --card:#fff; --text:#18181b; --muted:#6b6b76; --line:#0002; color-scheme:light; } }
+  :root[data-theme="light"] { --bg:#f5f5f7; --card:#fff; --text:#18181b; --muted:#6b6b76; --line:#0002; color-scheme:light; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
-  header { background:#000; border-bottom:2px solid var(--brand); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
+  header { flex-wrap:wrap; background:#000; border-bottom:2px solid var(--brand); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
   header img { height:40px; } header img[src=""] { display:none; }
   header b { font-size:1rem; flex:1; color:var(--muted); font-weight:500; }
   header button { background:#fff3; color:#fff; border:0; padding:6px 12px; border-radius:6px; cursor:pointer; }
@@ -19,7 +20,6 @@
   h1,h2 { margin:0 0 12px; font-size:1.2rem; }
   label { display:block; margin:10px 0 4px; font-size:.85rem; color:var(--muted); }
   input:focus,select:focus { outline:2px solid var(--accent); }
-  select option { color:#000; }
   input,select { padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; width:100%; }
   .btn { padding:9px 16px; border:0; border-radius:8px; background:var(--brand); color:#000; font-weight:600; font:inherit; cursor:pointer; margin-top:14px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
@@ -58,6 +58,7 @@
   .docs { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 14px; padding:12px; border:1px solid var(--accent); border-radius:10px; }
   .doc { color:#fff; background:var(--accent); padding:7px 14px; border-radius:8px; text-decoration:none; font-size:.9rem; }
   .doc:hover { filter:brightness(1.15); }
+  .toast { position:fixed; left:16px; right:16px; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); max-width:520px; margin:0 auto; padding:12px 16px; border-radius:10px; background:var(--card); border:1px solid var(--brand); color:var(--text); z-index:10; }
 </style>
 </head>
 <body>
@@ -185,6 +186,7 @@
   <!-- Detalhe / devolução / ciência -->
   <section id="vDetalhe" hidden><div id="detalhe"></div></section>
 </main>
+<div class="toast" id="toast" role="status" hidden></div>
 <script>window.__DEMO__ = true;</script>
 <script>// Lógica pro rata de endossos (baseada na planilha "Base para cálculos")
 // dias = data do endosso - vigência inicial
@@ -649,6 +651,8 @@ function badgeAdmin(s) {
   return `<span class="tag ${c}">${STATUS_ADMIN[s.status]}</span>` + (s.divergencia ? ` <span class="tag bad">Divergência</span>` : "");
 }
 
+function notificar(msg) { $("toast").textContent = msg; $("toast").hidden = false; clearTimeout(notificar.t); notificar.t = setTimeout(() => $("toast").hidden = true, 6000); }
+
 // ---------- sessão e rotas
 function montarMenu() {
   const itens = USER.role === "admin" ? [["#/admin", "Solicitações"], ["#/usuarios", "Usuários"]] : [["#/nova", "Nova solicitação"], ["#/minhas", "Minhas solicitações"]];
@@ -671,7 +675,7 @@ async function rota() {
     location.hash = admin ? "#/admin" : "#/nova";
   } catch (e) {
     if (e.status === 401) return sair(true);
-    alert(e.message);
+    notificar(e.message);
   }
 }
 window.addEventListener("hashchange", rota);
@@ -765,7 +769,7 @@ async function telaDetalhe(id) {
   if (!admin && s.status === "devolvida") ligarCiente(s);
   if ($("reenviarSp")) $("reenviarSp").onclick = async () => {
     $("reenviarSp").disabled = true;
-    try { await API.post(`/solicitacoes/${s.id}/arquivar`); await telaDetalhe(s.id); } catch (e) { alert(e.message); await telaDetalhe(s.id); }
+    try { await API.post(`/solicitacoes/${s.id}/arquivar`); await telaDetalhe(s.id); } catch (e) { notificar(e.message); await telaDetalhe(s.id); }
   };
   show("vDetalhe");
 }
@@ -773,6 +777,8 @@ async function telaDetalhe(id) {
 const NOME_ANEXO = { endosso: "Endosso", boleto: "Boleto" };
 function blocoAnexos(s) {
   if (!s.anexos || !s.anexos.length) return "";
+  if (window.__ARTIFACT__) // o visualizador bloqueia downloads da própria página: mostra só o nome
+    return `<div class="docs"><b>Documentos anexados</b>${s.anexos.map(a => `<span class="tag">${NOME_ANEXO[a.tipo]} (PDF): ${esc(a.nome)}</span>`).join("")}<small class="quem">Na demonstração os arquivos não podem ser baixados.</small></div>`;
   return `<div class="docs"><b>Documentos</b>${s.anexos.map(a => `<a class="doc" href="${API.urlAnexo(s.id, a.tipo)}" target="_blank" rel="noopener"${API.demo ? ` download="${esc(a.nome)}"` : ""}>${NOME_ANEXO[a.tipo]} (PDF)</a>`).join("")}</div>`;
 }
 // Admin: situação do arquivo dos PDFs no SharePoint

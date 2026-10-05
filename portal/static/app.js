@@ -17,6 +17,8 @@ function badgeAdmin(s) {
   return `<span class="tag ${c}">${STATUS_ADMIN[s.status]}</span>` + (s.divergencia ? ` <span class="tag bad">Divergência</span>` : "");
 }
 
+function notificar(msg) { $("toast").textContent = msg; $("toast").hidden = false; clearTimeout(notificar.t); notificar.t = setTimeout(() => $("toast").hidden = true, 6000); }
+
 // ---------- sessão e rotas
 function montarMenu() {
   const itens = USER.role === "admin" ? [["#/admin", "Solicitações"], ["#/usuarios", "Usuários"]] : [["#/nova", "Nova solicitação"], ["#/minhas", "Minhas solicitações"]];
@@ -39,7 +41,7 @@ async function rota() {
     location.hash = admin ? "#/admin" : "#/nova";
   } catch (e) {
     if (e.status === 401) return sair(true);
-    alert(e.message);
+    notificar(e.message);
   }
 }
 window.addEventListener("hashchange", rota);
@@ -133,7 +135,7 @@ async function telaDetalhe(id) {
   if (!admin && s.status === "devolvida") ligarCiente(s);
   if ($("reenviarSp")) $("reenviarSp").onclick = async () => {
     $("reenviarSp").disabled = true;
-    try { await API.post(`/solicitacoes/${s.id}/arquivar`); await telaDetalhe(s.id); } catch (e) { alert(e.message); await telaDetalhe(s.id); }
+    try { await API.post(`/solicitacoes/${s.id}/arquivar`); await telaDetalhe(s.id); } catch (e) { notificar(e.message); await telaDetalhe(s.id); }
   };
   show("vDetalhe");
 }
@@ -141,6 +143,8 @@ async function telaDetalhe(id) {
 const NOME_ANEXO = { endosso: "Endosso", boleto: "Boleto" };
 function blocoAnexos(s) {
   if (!s.anexos || !s.anexos.length) return "";
+  if (window.__ARTIFACT__) // o visualizador bloqueia downloads da própria página: mostra só o nome
+    return `<div class="docs"><b>Documentos anexados</b>${s.anexos.map(a => `<span class="tag">${NOME_ANEXO[a.tipo]} (PDF): ${esc(a.nome)}</span>`).join("")}<small class="quem">Na demonstração os arquivos não podem ser baixados.</small></div>`;
   return `<div class="docs"><b>Documentos</b>${s.anexos.map(a => `<a class="doc" href="${API.urlAnexo(s.id, a.tipo)}" target="_blank" rel="noopener"${API.demo ? ` download="${esc(a.nome)}"` : ""}>${NOME_ANEXO[a.tipo]} (PDF)</a>`).join("")}</div>`;
 }
 // Admin: situação do arquivo dos PDFs no SharePoint
