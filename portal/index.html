@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal Pro Rata</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --text:#1d2433; --accent:#2f5bea; --muted:#6b7385; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12151d; --card:#1c212d; --text:#e8ebf3; --muted:#9aa3b8; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); display:grid; place-items:center; min-height:100vh; padding:16px; }
+  .card { background:var(--card); padding:28px; border-radius:14px; width:100%; max-width:420px; box-shadow:0 4px 24px #0002; }
+  h1 { margin:0 0 16px; font-size:1.3rem; }
+  label { display:block; margin:12px 0 4px; font-size:.85rem; color:var(--muted); }
+  input { width:100%; padding:10px; border:1px solid #8884; border-radius:8px; background:transparent; color:inherit; font-size:1rem; }
+  button { margin-top:18px; width:100%; padding:11px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-size:1rem; cursor:pointer; }
+  button.link { background:none; color:var(--muted); margin-top:8px; }
+  .res { margin-top:18px; padding:14px; border-radius:8px; background:#2f5bea18; line-height:1.6; }
+  .erro { color:#d33; margin-top:10px; font-size:.9rem; }
+  [hidden] { display:none; }
+</style>
+</head>
+<body>
+<main class="card">
+  <section id="login">
+    <h1>Portal de acesso</h1>
+    <form id="fLogin">
+      <label for="user">Usuário</label><input id="user" autocomplete="username" required>
+      <label for="pass">Senha</label><input id="pass" type="password" autocomplete="current-password" required>
+      <button>Entrar</button>
+      <div class="erro" id="erroLogin"></div>
+    </form>
+  </section>
+
+  <section id="calc" hidden>
+    <h1>Calculadora Pro Rata</h1>
+    <form id="fCalc">
+      <label for="valor">Valor mensal (R$)</label><input id="valor" type="number" step="0.01" min="0" required>
+      <label for="ini">Data de início</label><input id="ini" type="date" required>
+      <label for="fim">Data de fim (opcional, padrão: fim do mês)</label><input id="fim" type="date">
+      <button>Calcular</button>
+      <div class="erro" id="erroCalc"></div>
+    </form>
+    <div class="res" id="res" hidden></div>
+    <button class="link" id="sair">Sair</button>
+  </section>
+</main>
+<script src="prorata.js"></script>
+<script>
+  // ATENÇÃO: login apenas demonstrativo (client-side). Não oferece segurança real.
+  const USUARIOS = { admin: "1234" };
+  const $ = id => document.getElementById(id);
+  const brl = v => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+  const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+
+  function mostrar(logado) { $("login").hidden = logado; $("calc").hidden = !logado; }
+  mostrar(sessionStorage.getItem("logado") === "1");
+
+  $("fLogin").onsubmit = e => {
+    e.preventDefault();
+    if (USUARIOS[$("user").value] === $("pass").value) {
+      sessionStorage.setItem("logado", "1"); $("erroLogin").textContent = ""; mostrar(true);
+    } else $("erroLogin").textContent = "Usuário ou senha inválidos.";
+  };
+  $("sair").onclick = () => { sessionStorage.removeItem("logado"); mostrar(false); };
+
+  $("fCalc").onsubmit = e => {
+    e.preventDefault();
+    $("erroCalc").textContent = "";
+    try {
+      const ini = parse($("ini").value);
+      const dMes = diasNoMes(ini.getFullYear(), ini.getMonth() + 1);
+      const fim = $("fim").value ? parse($("fim").value) : new Date(ini.getFullYear(), ini.getMonth(), dMes);
+      if (fim < ini) throw new Error("A data de fim é anterior ao início.");
+      const usados = diasEntre(ini, fim);
+      const r = calcularProRata(parseFloat($("valor").value), dMes, usados);
+      $("res").hidden = false;
+      $("res").innerHTML = `Dias no mês: <b>${dMes}</b><br>Dias utilizados: <b>${usados}</b><br>Valor por dia: <b>${brl(r.valorDia)}</b><br>Total pro rata: <b>${brl(r.total)}</b>`;
+    } catch (err) { $("res").hidden = true; $("erroCalc").textContent = err.message; }
+  };
+</script>
+</body>
+</html>
