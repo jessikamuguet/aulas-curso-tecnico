@@ -125,9 +125,14 @@ Tudo (solicitações, usuários, PDFs) fica no arquivo `C:\portal\portal.db`. Se
 **Para restaurar um backup:** desligue o portal (Passo 12), copie o arquivo de backup para `C:\portal`, renomeie para
 `portal.db` (substituindo o atual) e ligue de novo.
 
-## Passo 10. Se esquecer a senha do admin
+## Passo 10. Esqueceram a senha
 
-Dois cliques em **`redefinir-senha.bat`**, digite a nova senha duas vezes (ela não aparece enquanto você digita).
+- **Cliente ou outro administrador:** entre como administrador → **Usuários** → botão **Redefinir senha** na linha da pessoa.
+  Use **Gerar senha** (ou digite uma), clique **Redefinir senha** e passe a senha temporária por um canal seguro (anote: ela
+  não é mostrada de novo). Ao entrar, a pessoa é **obrigada a escolher uma senha nova**.
+- **Trocar a própria senha:** botão **Alterar senha** no alto da tela.
+- **Você esqueceu a sua e não há outro administrador para ajudar:** dois cliques em **`redefinir-senha.bat`** no servidor, digite
+  a nova senha duas vezes (ela não aparece enquanto você digita). Para outro usuário, use `venv\Scripts\python redefinir_senha.py usuario`.
 
 ## Passo 11. Acesso pela internet (Opção B)
 

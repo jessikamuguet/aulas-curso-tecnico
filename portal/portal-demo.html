@@ -68,6 +68,7 @@
   <b>Portal de Movimentações | Endossos</b>
   <nav id="nav" hidden></nav>
   <span class="quem" id="quem"></span>
+  <button id="btnSenha" hidden>Alterar senha</button>
   <button id="sair" hidden>Sair</button>
 </header>
 <div class="demo" id="demoInfo" hidden>Modo demonstração: os dados ficam só neste navegador. Acessos de teste: <b>admin / admin123</b> (interno) e <b>cliente / cliente123</b>.</div>
@@ -182,9 +183,32 @@
       </form>
       <div class="erro" id="erroUsuario"></div><div class="ok" id="okUsuario" hidden></div>
     </div>
+    <div class="card" id="cardReset" hidden>
+      <h2>Redefinir senha de <span id="resetNome"></span></h2>
+      <p class="quem">Defina uma senha <b>temporária</b>. A pessoa será obrigada a trocá-la no próximo acesso, e qualquer acesso aberto dela é encerrado. Passe a senha por um canal seguro.</p>
+      <div class="grid">
+        <div><label for="resetSenha">Senha temporária (mín. 8 caracteres)</label><input id="resetSenha" autocomplete="off" spellcheck="false"></div>
+        <div style="align-self:end"><button type="button" class="btn sec mini" id="resetGerar">Gerar senha</button> <button type="button" class="btn sec mini" id="resetCopiar">Copiar</button></div>
+      </div>
+      <button class="btn" id="resetOk">Redefinir senha</button> <button class="btn sec" id="resetCancelar">Cancelar</button>
+      <div class="erro" id="erroReset"></div><div class="ok" id="okReset" hidden></div>
+    </div>
     <div class="card"><h2>Usuários</h2>
       <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
     </div>
+  </section>
+
+  <!-- Alterar a própria senha (também usada no primeiro acesso após redefinição) -->
+  <section id="vSenha" class="card login" hidden>
+    <h1>Alterar senha</h1>
+    <div class="aviso" id="avisoTroca" hidden>Sua senha foi redefinida por um administrador. Defina uma nova senha para continuar.</div>
+    <form id="fSenha">
+      <label for="sAtual">Senha atual (ou temporária)</label><input id="sAtual" type="password" autocomplete="current-password" required>
+      <label for="sNova">Nova senha (mínimo 8 caracteres)</label><input id="sNova" type="password" autocomplete="new-password" required minlength="8">
+      <label for="sConf">Repita a nova senha</label><input id="sConf" type="password" autocomplete="new-password" required minlength="8">
+      <button class="btn">Salvar nova senha</button>
+      <div class="erro" id="erroSenha"></div><div class="ok" id="okSenha" hidden></div>
+    </form>
   </section>
 
   <!-- Detalhe / devolução / ciência -->
@@ -269,8 +293,10 @@ const Mock = (() => {
   const MAX_ADMINS = 5;
   const me = () => st.users.find(u => u.id === st.uid && u.ativo !== false);
   const adminsAtivos = () => st.users.filter(u => u.role === "admin" && u.ativo !== false).length;
-  const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role });
-  const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401); if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
+  const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role, trocar_senha: !!u.trocar });
+  let rotaAtual = "";
+  const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401);
+    if (u.trocar && !["/me", "/logout", "/minha-senha"].includes(rotaAtual)) { const e = new Error("Defina uma nova senha para continuar."); e.status = 403; e.trocar_senha = true; throw e; } if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
   const soma = (vs, k) => Math.round(vs.reduce((a, v) => a + (v[k] || 0), 0) * 100) / 100;
   const ser = s => { const u = st.users.find(x => x.id === s.user_id);
     const { anexos, devolvida_por, ...resto } = JSON.parse(JSON.stringify(s));
@@ -360,12 +386,28 @@ const Mock = (() => {
     Object.assign(s, { status: "ciente", ciente_em: new Date().toISOString(), divergencia: dv || null }); save(); return { solicitacao: ser(s) };
   }
 
+  function minhaSenha(u, d) {
+    if (d.atual !== u.password) fail("A senha atual está incorreta.");
+    if (String(d.nova || "").length < 8) fail("A nova senha precisa ter pelo menos 8 caracteres.");
+    if (d.nova === d.atual) fail("A nova senha precisa ser diferente da atual.");
+    u.password = d.nova; u.trocar = false; save(); return { ok: true };
+  }
+  function redefinirSenha(eu, id, d) {
+    const alvo = st.users.find(x => x.id === +id);
+    if (+id === eu.id) fail("Para trocar a sua própria senha, use \"Alterar senha\".", 409);
+    if (String(d.password || "").length < 8) fail("A senha temporária precisa ter pelo menos 8 caracteres.");
+    if (!alvo) fail("Usuário não encontrado.", 404);
+    alvo.password = d.password; alvo.trocar = true; save(); return { ok: true };
+  }
+
   return { anexoUrl: (id, tipo) => (achar(id).anexos?.[tipo]?.data) || "#", handle(method, path, d = {}) {
-    let m;
+    let m; rotaAtual = path;
     if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password && x.ativo !== false);
       if (!u) fail("Usuário ou senha inválidos.", 401); st.uid = u.id; save(); return { user: pub(u) }; }
     if (path === "/logout") { st.uid = null; save(); return { ok: true }; }
     if (path === "/me") return { user: pub(exige()) };
+    if (path === "/minha-senha") return minhaSenha(exige(), d);
+    if ((m = path.match(/^\/usuarios\/(\d+)\/senha$/))) return redefinirSenha(exige(true), m[1], d);
     if (path === "/usuarios" && method === "GET") { exige(true); return { usuarios: st.users.map(u => ({ ...pub(u), ativo: u.ativo !== false })), limite_admins: MAX_ADMINS, admins_ativos: adminsAtivos() }; }
     if ((m = path.match(/^\/usuarios\/(\d+)\/ativo$/))) { const eu = exige(true), alvo = st.users.find(x => x.id === +m[1]);
       if (typeof d.ativo !== "boolean") fail("Informe ativo: true ou false."); if (!alvo) fail("Usuário não encontrado.", 404);
@@ -398,7 +440,7 @@ const API = (() => {
     const r = await fetch("/api" + path, { method, credentials: "same-origin",
       headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; throw e; }
+    if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; e.trocar_senha = !!data.trocar_senha; throw e; }
     return data;
   }
   // Envio com arquivos (multipart): dados em JSON + { campo: File }
@@ -709,7 +751,7 @@ const API = (() => {
 </script>
 <script>// Navegação, perfis (admin/cliente) e telas do portal
 let USER = null;
-const VIEWS = ["vLogin","vNova","vMinhas","vAdmin","vUsuarios","vDetalhe"];
+const VIEWS = ["vLogin","vNova","vMinhas","vAdmin","vUsuarios","vDetalhe","vSenha"];
 const show = id => VIEWS.forEach(v => $(v).hidden = v !== id);
 const STATUS_ADMIN = { em_emissao: "Em emissão", devolvida: "Devolvida (aguardando ciência)", ciente: "Com ciência" };
 const STATUS_CLIENTE = { em_emissao: "Solicitação em processo de emissão", devolvida: "Endosso devolvido: aguardando sua ciência", ciente: "Concluída" };
@@ -732,7 +774,7 @@ function notificar(msg) { $("toast").textContent = msg; $("toast").hidden = fals
 function montarMenu() {
   const itens = USER.role === "admin" ? [["#/admin", "Solicitações"], ["#/usuarios", "Usuários"]] : [["#/nova", "Nova solicitação"], ["#/minhas", "Minhas solicitações"]];
   $("nav").innerHTML = itens.map(([h, t]) => `<a href="${h}" data-h="${h}">${t}</a>`).join("");
-  $("nav").hidden = $("sair").hidden = false;
+  $("nav").hidden = $("sair").hidden = $("btnSenha").hidden = false;
   $("quem").textContent = USER.nome;
 }
 function marcarMenu() { document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.dataset.h === (location.hash.split("/").slice(0, 2).join("/")))); }
@@ -741,6 +783,8 @@ async function rota() {
   if (!USER) { show("vLogin"); return; }
   const [, p, id] = location.hash.split("/"), admin = USER.role === "admin";
   marcarMenu();
+  if (USER.trocar_senha && p !== "senha") { location.hash = "#/senha"; return; } // senha temporária: precisa trocar antes de tudo
+  if (p === "senha") return telaSenha();
   try {
     if (p === "s" && id) return await telaDetalhe(+id);
     if (admin && p === "usuarios") return await telaUsuarios();
@@ -749,6 +793,7 @@ async function rota() {
     if (!admin && p === "nova") { resetWizard(); return show("vNova"); }
     location.hash = admin ? "#/admin" : "#/nova";
   } catch (e) {
+    if (e.trocar_senha) { USER.trocar_senha = true; location.hash = "#/senha"; return; }
     if (e.status === 401) return sair(true);
     notificar(e.message);
   }
@@ -760,7 +805,7 @@ $("nav").addEventListener("click", e => { const a = e.target.closest("a"); if (a
 async function entrar(user) { USER = user; montarMenu(); if (!location.hash || location.hash === "#/login") location.hash = ""; await rota(); }
 async function sair(silencioso) {
   if (!silencioso) { try { await API.post("/logout"); } catch (e) {} }
-  USER = null; $("nav").hidden = $("sair").hidden = true; $("quem").textContent = ""; location.hash = ""; show("vLogin");
+  USER = null; $("nav").hidden = $("sair").hidden = $("btnSenha").hidden = true; $("quem").textContent = ""; location.hash = ""; show("vLogin");
 }
 $("sair").onclick = () => sair();
 $("fLogin").onsubmit = async e => {
@@ -819,10 +864,12 @@ async function telaUsuarios() {
   $("uPerfil").querySelector("option[value=admin]").disabled = n >= lim;
   $("listaUsuarios").innerHTML = usuarios.map(u => `<tr><td>${esc(u.nome)}</td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administrador" : "Cliente"}</td>
     <td><span class="tag ${u.ativo ? "good" : "bad"}">${u.ativo ? "Ativo" : "Desativado"}</span></td>
-    <td>${u.id === USER.id ? "<small class=\"quem\">você</small>" : `<button class="btn sec mini" data-uid="${u.id}" data-ativo="${!u.ativo}">${u.ativo ? "Desativar" : "Reativar"}</button>`}</td></tr>`).join("");
+    <td>${u.id === USER.id ? "<small class=\"quem\">você</small>" : `<button class="btn sec mini" data-uid="${u.id}" data-ativo="${!u.ativo}">${u.ativo ? "Desativar" : "Reativar"}</button> <button class="btn sec mini" data-reset="${u.id}" data-nome="${esc(u.nome)}">Redefinir senha</button>`}</td></tr>`).join("");
   show("vUsuarios");
 }
 $("listaUsuarios").onclick = async e => {
+  const r = e.target.closest("button[data-reset]");
+  if (r) { abrirReset(+r.dataset.reset, r.dataset.nome); return; }
   const b = e.target.closest("button[data-uid]"); if (!b) return;
   $("erroUsuario").textContent = "";
   try { await API.post(`/usuarios/${b.dataset.uid}/ativo`, { ativo: b.dataset.ativo === "true" }); await telaUsuarios(); } catch (err) { $("erroUsuario").textContent = err.message; }
@@ -976,6 +1023,50 @@ function ligarCiente(s) {
   $("demoInfo").hidden = !API.demo;
   try { const { user } = await API.get("/me"); await entrar(user); } catch (e) { show("vLogin"); }
 })();
+
+// ---------- redefinir a senha de outro usuário (administrador)
+let resetId = null;
+const gerarSenha = () => { // 12 caracteres sem letras que se confundem (0/O, 1/l/I)
+  const A = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", b = crypto.getRandomValues(new Uint8Array(12));
+  return [...b].map(x => A[x % A.length]).join("");
+};
+function abrirReset(id, nome) {
+  resetId = id; $("resetNome").textContent = nome; $("resetSenha").value = gerarSenha();
+  $("erroReset").textContent = ""; $("okReset").hidden = true; $("cardReset").hidden = false; $("cardReset").scrollIntoView?.();
+}
+$("resetGerar").onclick = () => { $("resetSenha").value = gerarSenha(); };
+$("resetCopiar").onclick = async () => {
+  try { await navigator.clipboard.writeText($("resetSenha").value); notificar("Senha copiada."); }
+  catch (e) { $("resetSenha").select(); notificar("Selecione e copie a senha manualmente."); }
+};
+$("resetCancelar").onclick = () => { $("cardReset").hidden = true; resetId = null; };
+$("resetOk").onclick = async () => {
+  $("erroReset").textContent = ""; $("okReset").hidden = true;
+  try {
+    const senha = $("resetSenha").value;
+    await API.post(`/usuarios/${resetId}/senha`, { password: senha });
+    $("okReset").hidden = false;
+    $("okReset").textContent = `Senha de ${$("resetNome").textContent} redefinida. Senha temporária: ${senha}. Ela precisará trocá-la ao entrar. Anote agora: esta senha não é mostrada de novo.`;
+    $("resetSenha").value = "";
+  } catch (e) { $("erroReset").textContent = e.message; }
+};
+
+// ---------- alterar a própria senha
+$("btnSenha").onclick = () => { location.hash = "#/senha"; };
+function telaSenha() {
+  $("fSenha").reset(); $("erroSenha").textContent = ""; $("okSenha").hidden = true;
+  $("avisoTroca").hidden = !USER.trocar_senha; show("vSenha");
+}
+$("fSenha").onsubmit = async e => {
+  e.preventDefault(); $("erroSenha").textContent = ""; $("okSenha").hidden = true;
+  if ($("sNova").value !== $("sConf").value) { $("erroSenha").textContent = "As duas senhas novas não são iguais."; return; }
+  try {
+    await API.post("/minha-senha", { atual: $("sAtual").value, nova: $("sNova").value });
+    const forcado = USER.trocar_senha; USER.trocar_senha = false; $("fSenha").reset();
+    if (forcado) { location.hash = USER.role === "admin" ? "#/admin" : "#/nova"; await rota(); }
+    else { $("okSenha").hidden = false; $("okSenha").textContent = "Senha alterada."; }
+  } catch (err) { $("erroSenha").textContent = err.message; }
+};
 </script>
 </body>
 </html>

@@ -6,7 +6,7 @@ const API = (() => {
     const r = await fetch("/api" + path, { method, credentials: "same-origin",
       headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; throw e; }
+    if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; e.trocar_senha = !!data.trocar_senha; throw e; }
     return data;
   }
   // Envio com arquivos (multipart): dados em JSON + { campo: File }

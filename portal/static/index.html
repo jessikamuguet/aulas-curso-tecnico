@@ -12,6 +12,7 @@
   <b>Portal de Movimentações | Endossos</b>
   <nav id="nav" hidden></nav>
   <span class="quem" id="quem"></span>
+  <button id="btnSenha" hidden>Alterar senha</button>
   <button id="sair" hidden>Sair</button>
 </header>
 <div class="demo" id="demoInfo" hidden>Modo demonstração: os dados ficam só neste navegador. Acessos de teste: <b>admin / admin123</b> (interno) e <b>cliente / cliente123</b>.</div>
@@ -126,9 +127,32 @@
       </form>
       <div class="erro" id="erroUsuario"></div><div class="ok" id="okUsuario" hidden></div>
     </div>
+    <div class="card" id="cardReset" hidden>
+      <h2>Redefinir senha de <span id="resetNome"></span></h2>
+      <p class="quem">Defina uma senha <b>temporária</b>. A pessoa será obrigada a trocá-la no próximo acesso, e qualquer acesso aberto dela é encerrado. Passe a senha por um canal seguro.</p>
+      <div class="grid">
+        <div><label for="resetSenha">Senha temporária (mín. 8 caracteres)</label><input id="resetSenha" autocomplete="off" spellcheck="false"></div>
+        <div style="align-self:end"><button type="button" class="btn sec mini" id="resetGerar">Gerar senha</button> <button type="button" class="btn sec mini" id="resetCopiar">Copiar</button></div>
+      </div>
+      <button class="btn" id="resetOk">Redefinir senha</button> <button class="btn sec" id="resetCancelar">Cancelar</button>
+      <div class="erro" id="erroReset"></div><div class="ok" id="okReset" hidden></div>
+    </div>
     <div class="card"><h2>Usuários</h2>
       <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
     </div>
+  </section>
+
+  <!-- Alterar a própria senha (também usada no primeiro acesso após redefinição) -->
+  <section id="vSenha" class="card login" hidden>
+    <h1>Alterar senha</h1>
+    <div class="aviso" id="avisoTroca" hidden>Sua senha foi redefinida por um administrador. Defina uma nova senha para continuar.</div>
+    <form id="fSenha">
+      <label for="sAtual">Senha atual (ou temporária)</label><input id="sAtual" type="password" autocomplete="current-password" required>
+      <label for="sNova">Nova senha (mínimo 8 caracteres)</label><input id="sNova" type="password" autocomplete="new-password" required minlength="8">
+      <label for="sConf">Repita a nova senha</label><input id="sConf" type="password" autocomplete="new-password" required minlength="8">
+      <button class="btn">Salvar nova senha</button>
+      <div class="erro" id="erroSenha"></div><div class="ok" id="okSenha" hidden></div>
+    </form>
   </section>
 
   <!-- Detalhe / devolução / ciência -->

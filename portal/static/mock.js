@@ -14,8 +14,10 @@ const Mock = (() => {
   const MAX_ADMINS = 5;
   const me = () => st.users.find(u => u.id === st.uid && u.ativo !== false);
   const adminsAtivos = () => st.users.filter(u => u.role === "admin" && u.ativo !== false).length;
-  const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role });
-  const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401); if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
+  const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role, trocar_senha: !!u.trocar });
+  let rotaAtual = "";
+  const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401);
+    if (u.trocar && !["/me", "/logout", "/minha-senha"].includes(rotaAtual)) { const e = new Error("Defina uma nova senha para continuar."); e.status = 403; e.trocar_senha = true; throw e; } if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
   const soma = (vs, k) => Math.round(vs.reduce((a, v) => a + (v[k] || 0), 0) * 100) / 100;
   const ser = s => { const u = st.users.find(x => x.id === s.user_id);
     const { anexos, devolvida_por, ...resto } = JSON.parse(JSON.stringify(s));
@@ -105,12 +107,28 @@ const Mock = (() => {
     Object.assign(s, { status: "ciente", ciente_em: new Date().toISOString(), divergencia: dv || null }); save(); return { solicitacao: ser(s) };
   }
 
+  function minhaSenha(u, d) {
+    if (d.atual !== u.password) fail("A senha atual está incorreta.");
+    if (String(d.nova || "").length < 8) fail("A nova senha precisa ter pelo menos 8 caracteres.");
+    if (d.nova === d.atual) fail("A nova senha precisa ser diferente da atual.");
+    u.password = d.nova; u.trocar = false; save(); return { ok: true };
+  }
+  function redefinirSenha(eu, id, d) {
+    const alvo = st.users.find(x => x.id === +id);
+    if (+id === eu.id) fail("Para trocar a sua própria senha, use \"Alterar senha\".", 409);
+    if (String(d.password || "").length < 8) fail("A senha temporária precisa ter pelo menos 8 caracteres.");
+    if (!alvo) fail("Usuário não encontrado.", 404);
+    alvo.password = d.password; alvo.trocar = true; save(); return { ok: true };
+  }
+
   return { anexoUrl: (id, tipo) => (achar(id).anexos?.[tipo]?.data) || "#", handle(method, path, d = {}) {
-    let m;
+    let m; rotaAtual = path;
     if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password && x.ativo !== false);
       if (!u) fail("Usuário ou senha inválidos.", 401); st.uid = u.id; save(); return { user: pub(u) }; }
     if (path === "/logout") { st.uid = null; save(); return { ok: true }; }
     if (path === "/me") return { user: pub(exige()) };
+    if (path === "/minha-senha") return minhaSenha(exige(), d);
+    if ((m = path.match(/^\/usuarios\/(\d+)\/senha$/))) return redefinirSenha(exige(true), m[1], d);
     if (path === "/usuarios" && method === "GET") { exige(true); return { usuarios: st.users.map(u => ({ ...pub(u), ativo: u.ativo !== false })), limite_admins: MAX_ADMINS, admins_ativos: adminsAtivos() }; }
     if ((m = path.match(/^\/usuarios\/(\d+)\/ativo$/))) { const eu = exige(true), alvo = st.users.find(x => x.id === +m[1]);
       if (typeof d.ativo !== "boolean") fail("Informe ativo: true ou false."); if (!alvo) fail("Usuário não encontrado.", 404);

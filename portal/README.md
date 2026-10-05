@@ -61,6 +61,9 @@ modelo são obrigatórios no cadastro e na importação.
 
 ## Regras
 
+- **Senhas:** o administrador redefine a senha de qualquer usuário (cliente ou administrador) em *Usuários → Redefinir senha*.
+  É uma senha **temporária**: a pessoa é obrigada a trocá-la ao entrar e qualquer acesso aberto dela é encerrado. Todo usuário pode
+  trocar a própria senha em *Alterar senha* (no alto da tela); isso também encerra os outros acessos abertos dele.
 - **Cálculo:** custo dia = valor inicial ÷ 365; saldo = valor inicial − custo dia × dias (dias = data do endosso − vigência).
   O servidor recalcula tudo; não confia nos valores enviados pelo navegador.
 - **Exclusão:** sempre negativa. Antes de restituir é preciso avaliar se a placa teve acionamento: o admin marca

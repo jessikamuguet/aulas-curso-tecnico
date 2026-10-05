@@ -62,7 +62,8 @@ app.config.update(MAX_CONTENT_LENGTH=25 * 1024 * 1024, SESSION_COOKIE_HTTPONLY=T
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, nome TEXT NOT NULL,
-  password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('admin','cliente')), ativo INTEGER NOT NULL DEFAULT 1);
+  password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('admin','cliente')), ativo INTEGER NOT NULL DEFAULT 1,
+  trocar_senha INTEGER NOT NULL DEFAULT 0, sessao INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS solicitacoes (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
   criado_em TEXT NOT NULL, prazo_em TEXT NOT NULL, vigencia TEXT,
@@ -103,8 +104,9 @@ def init_db():
     for col in ('ano_fab', 'ano_mod'):  # bancos criados antes dos anos do veículo
         if col not in {r[1] for r in con.execute('PRAGMA table_info(veiculos)')}:
             con.execute(f'ALTER TABLE veiculos ADD COLUMN {col} INTEGER')
-    if 'ativo' not in {r[1] for r in con.execute('PRAGMA table_info(users)')}:  # bancos criados antes da gestão de administradores
-        con.execute('ALTER TABLE users ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1')
+    for col, padrao in (('ativo', 1), ('trocar_senha', 0), ('sessao', 0)):  # bancos criados antes da gestão de usuários e senhas
+        if col not in {r[1] for r in con.execute('PRAGMA table_info(users)')}:
+            con.execute(f'ALTER TABLE users ADD COLUMN {col} INTEGER NOT NULL DEFAULT {padrao}')
     if 'devolvida_por' not in {r[1] for r in con.execute('PRAGMA table_info(solicitacoes)')}:
         con.execute('ALTER TABLE solicitacoes ADD COLUMN devolvida_por INTEGER')
     for col in ('sp_url', 'sp_erro'):  # bancos criados antes da integração com SharePoint
@@ -275,8 +277,8 @@ def usuario():
     if not uid:
         return None
     u = db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
-    if u and not u["ativo"]:  # usuário desativado perde o acesso na hora, mesmo com sessão aberta
-        session.clear()
+    if u and (not u["ativo"] or session.get("sv", 0) != u["sessao"]):
+        session.clear()  # desativado, ou senha trocada/redefinida: a sessão aberta perde o acesso na hora
         return None
     return u
 
@@ -289,6 +291,8 @@ def exige_login(admin=False):
     u = usuario()
     if not u:
         return None, erro("Faça login para continuar.", 401)
+    if u["trocar_senha"] and request.endpoint not in ("me", "logout", "minha_senha"):
+        return None, (jsonify(erro="Defina uma nova senha para continuar.", trocar_senha=True), 403)
     if admin and u["role"] != "admin":
         return None, erro("Acesso restrito ao administrador.", 403)
     return u, None
@@ -334,8 +338,10 @@ def login():
     _falhas.pop(chave, None)
     session.clear()
     session["uid"] = u["id"]
+    session["sv"] = u["sessao"]
     return jsonify(user=dict(id=u["id"], nome=u["nome"], username=u["username"], role=u["role"],
-                             sharepoint=sp_ativo() and u["role"] == "admin"))
+                             sharepoint=sp_ativo() and u["role"] == "admin",
+                             trocar_senha=bool(u["trocar_senha"])))
 
 
 @app.post("/api/logout")
@@ -350,7 +356,43 @@ def me():
     if e:
         return e
     return jsonify(user=dict(id=u["id"], nome=u["nome"], username=u["username"], role=u["role"],
-                             sharepoint=sp_ativo() and u["role"] == "admin"))
+                             sharepoint=sp_ativo() and u["role"] == "admin",
+                             trocar_senha=bool(u["trocar_senha"])))
+
+
+def _bloqueado(chave):
+    return _falhas.get(chave, (0, 0))[1] > time.time()
+
+
+def _falhou(chave):
+    tent = _falhas.get(chave, (0, 0))[0] + 1
+    _falhas[chave] = (tent, time.time() + 60 if tent >= 5 else 0)
+
+
+@app.post("/api/minha-senha")
+def minha_senha():
+    """Troca da própria senha (também usada para trocar a senha temporária no primeiro acesso)."""
+    u, e = exige_login()
+    if e:
+        return e
+    d = request.get_json(silent=True) or {}
+    atual, nova = str(d.get("atual", "")), str(d.get("nova", ""))
+    chave = (request.remote_addr, "senha:" + u["username"])
+    if _bloqueado(chave):
+        return erro("Muitas tentativas. Aguarde um minuto e tente de novo.", 429)
+    if not check_password_hash(u["password_hash"], atual):
+        _falhou(chave)
+        return erro("A senha atual está incorreta.")
+    if len(nova) < 8:
+        return erro("A nova senha precisa ter pelo menos 8 caracteres.")
+    if nova == atual:
+        return erro("A nova senha precisa ser diferente da atual.")
+    _falhas.pop(chave, None)
+    db().execute("UPDATE users SET password_hash=?, trocar_senha=0, sessao=sessao+1 WHERE id=?",
+                 (generate_password_hash(nova), u["id"]))
+    db().commit()
+    session["sv"] = u["sessao"] + 1  # mantém ESTA sessão; as outras caem
+    return jsonify(ok=True)
 
 
 # ---------------------------------------------------------------- usuários (admin)
@@ -386,6 +428,27 @@ def criar_usuario():
     except sqlite3.IntegrityError:
         return erro("Esse usuário já existe.", 409)
     return jsonify(ok=True), 201
+
+
+@app.post("/api/usuarios/<int:uid>/senha")
+def redefinir_senha_usuario(uid):
+    """Administrador define uma senha TEMPORÁRIA para um usuário (cliente ou administrador); a pessoa precisa trocá-la ao entrar."""
+    eu, e = exige_login(admin=True)
+    if e:
+        return e
+    if uid == eu["id"]:
+        return erro("Para trocar a sua própria senha, use \"Alterar senha\".", 409)
+    senha = str((request.get_json(silent=True) or {}).get("password", ""))
+    if len(senha) < 8:
+        return erro("A senha temporária precisa ter pelo menos 8 caracteres.")
+    alvo = db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    if not alvo:
+        return erro("Usuário não encontrado.", 404)
+    db().execute("UPDATE users SET password_hash=?, trocar_senha=1, sessao=sessao+1 WHERE id=?", (generate_password_hash(senha), uid))
+    db().commit()
+    for k in [k for k in _falhas if k[1] in (alvo["username"], "senha:" + alvo["username"])]:
+        del _falhas[k]  # tira o bloqueio por tentativas, se houver
+    return jsonify(ok=True)
 
 
 @app.post("/api/usuarios/<int:uid>/ativo")
