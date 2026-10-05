@@ -2,19 +2,25 @@
 let USER = null;
 const VIEWS = ["vLogin","vNova","vMinhas","vAdmin","vUsuarios","vDetalhe","vSenha","vEsqueci","vDefinir"];
 const show = id => VIEWS.forEach(v => $(v).hidden = v !== id);
-const STATUS_ADMIN = { em_emissao: "Em emissão", devolvida: "Devolvida (aguardando ciência)", ciente: "Com ciência", cancelada: "Cancelada" };
-const STATUS_CLIENTE = { em_emissao: "Solicitação em processo de emissão", devolvida: "Endosso devolvido: aguardando sua ciência", ciente: "Concluída", cancelada: "Cancelada" };
+const ABERTOS = ["em_emissao", "aguardando_aceite", "contestada", "aceita"]; // antes da devolução: ainda dá para cancelar
+const SO_ATENDIMENTO = ["em_emissao", "contestada", "aceita"]; // etapas em que a "bola" está com o atendimento (valem prazo)
+const STATUS_ADMIN = { em_emissao: "Em emissão", aguardando_aceite: "Aguardando aceite do cliente", contestada: "Valores contestados", aceita: "Valores aceitos (emitir endosso)",
+  devolvida: "Devolvida (aguardando ciência)", ciente: "Com ciência", cancelada: "Cancelada" };
+const rotuloAdmin = s => s.status === "em_emissao" && s.exige_aceite ? "Em análise (enviar valores)" : STATUS_ADMIN[s.status];
+const STATUS_CLIENTE = { em_emissao: "Solicitação em processo de emissão", devolvida: "Endosso devolvido: aguardando sua ciência", ciente: "Concluída", cancelada: "Cancelada",
+  aguardando_aceite: "Aguardando o seu aceite dos valores", contestada: "Valores contestados: em nova análise", aceita: "Valores aceitos: em processo de emissão" };
+const classeCliente = s => s.status === "ciente" ? "good" : s.status === "cancelada" ? "off" : s.status === "aguardando_aceite" ? "bad" : "warn";
 const tiposTxt = s => [...new Set(s.veiculos.map(v => v.tipo))].map(t => t[0] + t.slice(1).toLowerCase()).join(", ");
 
 function prazoTxt(s) {
-  if (s.status !== "em_emissao") return "";
+  if (!SO_ATENDIMENTO.includes(s.status)) return s.status === "aguardando_aceite" ? '<span class="tag">Aguardando o cliente</span>' : "";
   const h = (new Date(s.prazo_em) - Date.now()) / 3600e3, a = Math.abs(h);
   const dur = a >= 48 ? Math.floor(a / 24) + " dia(s)" : Math.max(1, Math.round(a)) + " h";
   return h < 0 ? `<span class="tag bad">Atrasada há ${dur}</span>` : `<span class="tag warn">Restam ${dur}</span>`;
 }
 function badgeAdmin(s) {
-  const c = s.status === "em_emissao" ? "warn" : s.status === "ciente" ? "good" : s.status === "cancelada" ? "off" : "";
-  return `<span class="tag ${c}">${STATUS_ADMIN[s.status]}</span>` + (s.divergencia ? ` <span class="tag bad">Divergência</span>` : "");
+  const c = SO_ATENDIMENTO.includes(s.status) ? "warn" : s.status === "ciente" ? "good" : s.status === "cancelada" ? "off" : "";
+  return `<span class="tag ${c}">${rotuloAdmin(s)}</span>` + (s.divergencia ? ` <span class="tag bad">Divergência</span>` : "");
 }
 
 function notificar(msg) { $("toast").textContent = msg; $("toast").hidden = false; clearTimeout(notificar.t); notificar.t = setTimeout(() => $("toast").hidden = true, 6000); }
@@ -68,8 +74,8 @@ async function telaMinhas() {
   const { solicitacoes } = await API.get("/solicitacoes");
   $("vazioMinhas").hidden = solicitacoes.length > 0;
   $("listaMinhas").innerHTML = solicitacoes.map(s => `<tr class="click" data-id="${s.id}"><td>${s.id}</td><td>${fmtDataHora(s.criado_em)}</td>
-    <td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td><span class="tag ${s.status === "ciente" ? "good" : s.status === "cancelada" ? "off" : "warn"}">${STATUS_CLIENTE[s.status]}</span></td>
-    <td>${s.status === "em_emissao" ? `<button class="btn sec mini" data-cancelar="${s.id}">Cancelar solicitação</button>` : ""}</td></tr>`).join("");
+    <td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td><span class="tag ${classeCliente(s)}">${STATUS_CLIENTE[s.status]}</span></td>
+    <td>${ABERTOS.includes(s.status) ? `<button class="btn sec mini" data-cancelar="${s.id}">Cancelar solicitação</button>` : ""}</td></tr>`).join("");
   show("vMinhas");
 }
 for (const t of ["listaMinhas", "listaAdmin"]) $(t).onclick = e => {
@@ -92,7 +98,7 @@ function desenharAdmin() {
   const l = filtradas(); $("vazioAdmin").hidden = l.length > 0;
   $("listaAdmin").innerHTML = l.map(s => `<tr class="click" data-id="${s.id}"><td>${s.id}</td><td>${esc(s.usuario.nome)}<br><small>${esc(s.usuario.username)}</small></td>
     <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td><td>${s.devolvida_por ? esc(s.devolvida_por.nome) : "-"}</td>
-    <td>${s.status === "em_emissao" ? `<button class="btn sec mini" data-cancelar="${s.id}">Cancelar</button>` : ""}</td></tr>`).join("");
+    <td>${ABERTOS.includes(s.status) ? `<button class="btn sec mini" data-cancelar="${s.id}">Cancelar</button>` : ""}</td></tr>`).join("");
 }
 $("filtroStatus").onchange = desenharAdmin;
 // Planilha para o administrativo: uma linha por veículo, com os dados do veículo e o valor da pró rata
@@ -100,12 +106,13 @@ const numBR = v => v == null ? "" : v.toLocaleString("pt-BR", { minimumFractionD
 function baixarPlanilha(sols, arquivo) {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const linhas = [["Nº solicitação","Data da solicitação","Usuário","Nome","Placa","Marca/Modelo","Chassi","Ano fabricação","Ano modelo","Tipo","Data de vigência","Contrato",
-    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Parcelas solicitadas","Situação","Prazo","Nº endosso","Devolvido por","Devolvida em","Ciência em","Divergência","Anexos","Cancelada em","Cancelada por","Motivo do cancelamento"]];
+    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Parcelas solicitadas","Situação","Prazo","Nº endosso","Devolvido por","Devolvida em","Ciência em","Divergência","Anexos","Cancelada em","Cancelada por","Motivo do cancelamento","Aceite dos valores em","Rodadas de valores"]];
   sols.forEach(s => s.veiculos.forEach(v => linhas.push([s.id, fmtDataHora(s.criado_em), s.usuario.username, s.usuario.nome, v.placa, v.marca_modelo, v.chassi,
     v.ano_fab, v.ano_mod, v.tipo, fmtData(v.data_endosso), v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "", s.parcelas,
-    STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_por && s.devolvida_por.nome, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
+    rotuloAdmin(s), fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_por && s.devolvida_por.nome, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
     s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(" + "), s.cancelada_em && fmtDataHora(s.cancelada_em),
-    s.cancelada_por ? s.cancelada_por.nome : (s.cancelada_por_perfil === "cliente" ? "Cliente" : ""), s.cancelamento_motivo])));
+    s.cancelada_por ? s.cancelada_por.nome : (s.cancelada_por_perfil === "cliente" ? "Cliente" : ""), s.cancelamento_motivo,
+    s.aceite_em && fmtDataHora(s.aceite_em), s.rodada || ""])));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
   a.download = arquivo; a.click();
@@ -160,11 +167,13 @@ $("emailOk").onclick = async () => {
 async function telaDetalhe(id, abrirCancelar = false) {
   const { solicitacao: s } = await API.get("/solicitacoes/" + id);
   const admin = USER.role === "admin";
-  const cab = `<div class="topo"><h2>Solicitação nº ${s.id}</h2>${admin ? badgeAdmin(s) + " " + prazoTxt(s) + ' <button class="btn sec mini" id="baixarSol">Baixar planilha</button>' : `<span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span>`}</div>
+  const cab = `<div class="topo"><h2>Solicitação nº ${s.id}</h2>${admin ? badgeAdmin(s) + " " + prazoTxt(s) + ' <button class="btn sec mini" id="baixarSol">Baixar planilha</button>' : `<span class="tag ${classeCliente(s)}">${STATUS_CLIENTE[s.status]}</span>`}</div>
     <div class="kv">
       <div><small>Solicitante</small>${esc(s.usuario.nome)}</div>
       <div><small>Data da solicitação</small>${fmtDataHora(s.criado_em)}</div>
-      ${admin ? `<div><small>Prazo de retorno (48h úteis)</small>${fmtDataHora(s.prazo_em)}</div>` : ""}
+      ${admin && SO_ATENDIMENTO.includes(s.status) ? `<div><small>Prazo do atendimento (48h úteis)</small>${fmtDataHora(s.prazo_em)}</div>` : ""}
+      ${s.rodada ? `<div><small>Rodadas de valores</small>${s.rodada}</div>` : ""}
+      ${s.aceite_em ? `<div><small>Valores aceitos em</small>${fmtDataHora(s.aceite_em)}</div>` : ""}
       ${s.vigencia ? `<div><small>Vigência inicial</small>${fmtData(s.vigencia)}</div>` : ""}
       ${s.parcelas > 1 ? `<div><small>Parcelamento solicitado</small>${s.parcelas}x</div>` : ""}
       ${s.numero_endosso ? `<div><small>Nº do endosso</small>${esc(s.numero_endosso)}</div>` : ""}
@@ -174,15 +183,13 @@ async function telaDetalhe(id, abrirCancelar = false) {
     </div>`;
   let corpo;
   if (s.status === "cancelada") corpo = bannerCancelada(s, admin) + tabelaSolicitada(s);
-  else if (admin) corpo = s.status === "em_emissao" ? formDevolver(s) : tabelaFinal(s, true);
-  else if (s.status === "em_emissao") corpo = `<div class="aviso"><b>Solicitação em processo de emissão.</b></div>${tabelaSolicitada(s)}`;
-  else if (s.status === "devolvida") corpo = formCiente(s);
-  else corpo = tabelaFinal(s, true);
-  $("detalhe").innerHTML = `<div class="card">${cab}${blocoCancelar(s)}${blocoAnexos(s)}${blocoSp(s)}${corpo}</div>`;
+  else if (admin) corpo = corpoAdmin(s);
+  else corpo = corpoCliente(s);
+  $("detalhe").innerHTML = `<div class="card">${cab}${blocoCancelar(s)}${blocoAnexos(s)}${blocoSp(s)}${corpo}</div>${blocoHistorico(s)}`;
   ligarCancelar(s, abrirCancelar);
   if (admin) $("baixarSol").onclick = () => baixarPlanilha([s], `solicitacao-${s.id}.csv`);
-  if (admin && s.status === "em_emissao") ligarDevolver(s);
-  if (!admin && s.status === "devolvida") ligarCiente(s);
+  if (admin) ligarAdmin(s);
+  else ligarCliente(s);
   if ($("reenviarSp")) $("reenviarSp").onclick = async () => {
     $("reenviarSp").disabled = true;
     try { await API.post(`/solicitacoes/${s.id}/arquivar`); await telaDetalhe(s.id); } catch (e) { notificar(e.message); await telaDetalhe(s.id); }
@@ -232,37 +239,87 @@ function tabelaFinal(s, obs) {
     ${s.status === "ciente" && !s.divergencia ? `<div class="ok">O cliente declarou ter recebido e estar de acordo com as informações.</div>` : ""}`;
 }
 
-// admin: devolver o endosso
-function formDevolver(s) {
+// ---------- chamado de valores (exclusão e substituição): atendimento propõe, cliente aceita ou contesta, atendimento emite
+const ultimoEvento = (s, tipo) => [...s.eventos].reverse().find(e => e.tipo === tipo);
+
+function corpoAdmin(s) {
+  const st = s.status;
+  if (!s.exige_aceite) return st === "em_emissao" ? tabelaEditavel(s) + camposEmissao() : tabelaFinal(s, true);
+  if (st === "em_emissao") return `<div class="aviso">Esta solicitação tem exclusão ou substituição: <b>envie os valores ao cliente para aceite</b>. Só depois do aceite o endosso pode ser emitido.</div>${formPropor(s)}`;
+  if (st === "contestada") { const c = ultimoEvento(s, "contestada");
+    return `<div class="aviso"><b>O cliente contestou os valores</b> em ${fmtDataHora(c.criado_em)}:<br>${esc(c.texto)}</div>${formPropor(s)}`; }
+  if (st === "aguardando_aceite") return `<div class="aviso"><b>Aguardando o aceite do cliente</b> (rodada ${s.rodada}). Quando ele responder, a solicitação volta para você com novo prazo.</div>${tabelaFinal(s, false)}${notaProposta(s)}`;
+  if (st === "aceita") return `<div class="ok"><b>Valores aceitos pelo cliente</b> em ${fmtDataHora(s.aceite_em)}. Emita o endosso e devolva.</div>${tabelaFinal(s, false)}${camposEmissao()}
+    <p><button class="btn sec mini" id="reabrir">Alterar valores (novo aceite do cliente)</button></p><div id="painelReabrir" hidden>${formPropor(s)}</div>`;
+  return tabelaFinal(s, true);
+}
+function corpoCliente(s) {
+  const st = s.status;
+  if (st === "em_emissao") return `<div class="aviso"><b>Solicitação em processo de emissão.</b>${s.exige_aceite ? " O atendimento vai analisar e enviar os valores para o seu aceite." : ""}</div>${tabelaSolicitada(s)}`;
+  if (st === "aguardando_aceite") return formAceite(s);
+  if (st === "aceita") return `<div class="ok"><b>Você aceitou os valores</b> em ${fmtDataHora(s.aceite_em)}. O atendimento está emitindo o endosso.</div>${tabelaFinal(s, false)}`;
+  if (st === "contestada") return `<div class="aviso"><b>Você contestou os valores:</b><br>${esc(ultimoEvento(s, "contestada").texto)}<br><small class="quem">O atendimento fará uma nova análise e enviará novos valores.</small></div>${tabelaFinal(s, false)}`;
+  if (st === "devolvida") return formCiente(s);
+  return tabelaFinal(s, true);
+}
+function notaProposta(s) { const e = ultimoEvento(s, "valores_enviados"); return e && e.texto ? `<p><small class="quem">Observação do atendimento</small><br>${esc(e.texto)}</p>` : ""; }
+
+// tabela editável de valores (administrador): usada para propor valores e, em pedidos só de inclusão, para devolver
+function tabelaEditavel(s) {
   const linhas = s.veiculos.map(v => {
-    const exc = v.tipo === "EXCLUSÃO", sub = v.tipo === "SUBSTITUIÇÃO";
+    const exc = v.tipo === "EXCLUSÃO", sub = v.tipo === "SUBSTITUIÇÃO", ini = v.valor_final ?? v.valor_calculado ?? "";
     return `<tr data-vid="${v.id}" data-tipo="${v.tipo}"><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${sub ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td>
       <td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${fmtData(v.data_endosso)}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${sub ? "-" : brl(v.valor_calculado)}</td>
-      <td>${exc ? '<label class="chkl" style="margin:0"><input type="checkbox" class="ac"> Teve acionamento</label>' : "-"}</td>
-      <td><input class="vf" type="number" step="0.01" style="min-width:120px" value="${v.valor_calculado ?? ""}" ${sub ? 'placeholder="informar"' : ""}></td></tr>`;
+      <td>${exc ? `<label class="chkl" style="margin:0"><input type="checkbox" class="ac"${v.acionamento ? " checked" : ""}> Teve acionamento</label>` : "-"}</td>
+      <td><input class="vf" type="number" step="0.01" style="min-width:120px" value="${v.acionamento ? 0 : ini}" ${v.acionamento ? "disabled" : ""} ${sub ? 'placeholder="informar (pode ser 0)"' : ""}></td></tr>`;
   }).join("");
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Vigência</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
+  return `<div class="tw"><table class="editavel"><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Vigência</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
     <tbody>${linhas}</tbody><tfoot><tr><td colspan="8" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
     <div id="infoParc"></div>
-    <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa.</div>
-    <div class="grid">
+    <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa (R$ 0,00 quando não há diferença).</div>`;
+}
+function camposEmissao() {
+  return `<div class="grid">
       <div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div>
       <div><label for="fEndosso">Endosso (PDF, obrigatório)</label><input id="fEndosso" type="file" accept="application/pdf,.pdf"></div>
       <div><label for="fBoleto">Boleto (PDF, se houver)</label><input id="fBoleto" type="file" accept="application/pdf,.pdf"></div>
     </div>
     <label for="obs">Observação para o cliente (opcional)</label><textarea id="obs"></textarea>
-    <button class="btn" id="devolver">Devolver endosso ao cliente</button><div class="erro" id="erroDev"></div>`;
+    <button class="btn" id="devolver">Emitir e devolver endosso ao cliente</button><div class="erro" id="erroDev"></div>`;
 }
-function ligarDevolver(s) {
-  const trs = () => [...document.querySelectorAll("#detalhe tbody tr")];
-  const total = () => { let t = 0; trs().forEach(tr => { const x = parseFloat(tr.querySelector(".vf").value); if (!isNaN(x)) t += x; }); $("totFinal").textContent = brl(t); $("infoParc").innerHTML = s.parcelas > 1 ? infoParcelas(s, t) : (t > 0 ? '<div class="quem">Pagamento à vista (sem parcelamento solicitado).</div>' : ""); };
+function formPropor(s) {
+  return tabelaEditavel(s) + `<label for="obsProp">Observação para o cliente (opcional)</label><textarea id="obsProp"></textarea>
+    <button class="btn" id="enviarValores">Enviar valores ao cliente para aceite</button><div class="erro" id="erroProp"></div>`;
+}
+// liga os campos da tabela editável; devolve uma função que coleta os valores
+function ligarEditavel(s, raiz) {
+  const trs = () => [...raiz.querySelectorAll("table.editavel tbody tr")];
+  const total = () => { let t = 0; trs().forEach(tr => { const x = parseFloat(tr.querySelector(".vf").value); if (!isNaN(x)) t += x; });
+    raiz.querySelector("#totFinal").textContent = brl(t);
+    raiz.querySelector("#infoParc").innerHTML = s.parcelas > 1 ? infoParcelas(s, t) : (t > 0 ? '<div class="quem">Pagamento à vista (sem parcelamento solicitado).</div>' : ""); };
   trs().forEach(tr => {
     const ac = tr.querySelector(".ac"), vf = tr.querySelector(".vf");
     if (ac) ac.onchange = () => { vf.disabled = ac.checked; if (ac.checked) vf.value = "0"; else vf.value = s.veiculos.find(v => v.id == tr.dataset.vid).valor_calculado; total(); };
     vf.oninput = total;
   });
   total();
-  $("devolver").onclick = async () => {
+  return () => trs().map(tr => ({ id: +tr.dataset.vid, acionamento: !!tr.querySelector(".ac")?.checked, valor_final: tr.querySelector(".vf").value }));
+}
+function ligarAdmin(s) {
+  const st = s.status;
+  const propor = raiz => { const coletar = ligarEditavel(s, raiz);
+    raiz.querySelector("#enviarValores").onclick = async () => {
+      const b = raiz.querySelector("#enviarValores"), er = raiz.querySelector("#erroProp"); er.textContent = ""; b.disabled = true;
+      try { await API.post(`/solicitacoes/${s.id}/propor-valores`, { observacao: raiz.querySelector("#obsProp").value, veiculos: coletar() }); notificar("Valores enviados ao cliente."); await telaDetalhe(s.id); }
+      catch (e) { er.textContent = e.message; b.disabled = false; } }; };
+  let coletar = null;
+  if (!s.exige_aceite && st === "em_emissao") coletar = ligarEditavel(s, $("detalhe"));
+  if (s.exige_aceite && (st === "em_emissao" || st === "contestada")) propor($("detalhe"));
+  if (st === "aceita") {
+    propor($("painelReabrir"));
+    $("reabrir").onclick = () => { $("painelReabrir").hidden = !$("painelReabrir").hidden; };
+  }
+  if ($("devolver")) $("devolver").onclick = async () => {
     $("erroDev").textContent = "";
     try {
       const files = { endosso: $("fEndosso").files[0], boleto: $("fBoleto").files[0] };
@@ -272,11 +329,47 @@ function ligarDevolver(s) {
         if (f && f.size > 10 * 1024 * 1024) throw new Error(`O PDF do ${k} passa de 10 MB.`);
       }
       $("devolver").disabled = true;
-      await API.postForm(`/solicitacoes/${s.id}/devolver`, { numero_endosso: $("nEnd").value, observacao: $("obs").value,
-        veiculos: trs().map(tr => ({ id: +tr.dataset.vid, acionamento: !!tr.querySelector(".ac")?.checked, valor_final: tr.querySelector(".vf").value })) }, files);
+      await API.postForm(`/solicitacoes/${s.id}/devolver`, { numero_endosso: $("nEnd").value, observacao: $("obs").value, veiculos: coletar ? coletar() : [] }, files);
       await telaDetalhe(s.id);
     } catch (e) { $("erroDev").textContent = e.message; $("devolver").disabled = false; }
   };
+}
+function formAceite(s) {
+  return `<div class="aviso"><b>O atendimento enviou os valores desta solicitação.</b> Confira e responda: aceite para seguirmos com a emissão do endosso, ou conteste informando o motivo.</div>
+    ${tabelaFinal(s, false)}${notaProposta(s)}
+    <label class="chkl"><input type="checkbox" id="deAcordoValores"> Estou de acordo com os valores acima.</label>
+    <button class="btn" id="aceitar">Aceitar valores</button> <button class="btn sec" id="abrirContestar">Não concordo</button>
+    <div class="erro" id="erroAceite"></div>
+    <div id="painelContestar" hidden style="margin-top:10px">
+      <label for="motivoContest">Por que você não concorda? (obrigatório, mínimo de 10 caracteres)</label><textarea id="motivoContest" maxlength="2000"></textarea>
+      <button class="btn" id="enviarContest" style="background:#d33;color:#fff">Enviar contestação</button> <button class="btn sec" id="voltarContest">Voltar</button>
+      <div class="erro" id="erroContest"></div>
+    </div>`;
+}
+function ligarCliente(s) {
+  if (s.status === "devolvida") ligarCiente(s);
+  if (s.status !== "aguardando_aceite") return;
+  $("aceitar").onclick = async () => {
+    $("erroAceite").textContent = ""; $("aceitar").disabled = true;
+    try { await API.post(`/solicitacoes/${s.id}/aceitar-valores`, { de_acordo: $("deAcordoValores").checked }); notificar("Valores aceitos. O atendimento foi avisado."); await telaDetalhe(s.id); }
+    catch (e) { $("erroAceite").textContent = e.message; $("aceitar").disabled = false; }
+  };
+  $("abrirContestar").onclick = () => { $("painelContestar").hidden = false; $("motivoContest").focus(); };
+  $("voltarContest").onclick = () => { $("painelContestar").hidden = true; };
+  $("enviarContest").onclick = async () => {
+    $("erroContest").textContent = ""; $("enviarContest").disabled = true;
+    try { await API.post(`/solicitacoes/${s.id}/contestar-valores`, { motivo: $("motivoContest").value }); notificar("Contestação enviada ao atendimento."); await telaDetalhe(s.id); }
+    catch (e) { $("erroContest").textContent = e.message; $("enviarContest").disabled = false; }
+  };
+}
+
+// histórico do chamado
+const EVENTO = { criada: "Solicitação aberta", valores_enviados: "Valores enviados para aceite", aceite: "Valores aceitos", contestada: "Valores contestados",
+  devolvida: "Endosso emitido e devolvido", ciente: "Ciência do cliente", cancelada: "Solicitação cancelada" };
+function blocoHistorico(s) {
+  if (!s.eventos || !s.eventos.length) return "";
+  return `<div class="card"><h2>Histórico</h2><ol class="hist">${s.eventos.map(e => `<li><b>${EVENTO[e.tipo] || esc(e.tipo)}</b>
+    <small class="quem"> · ${fmtDataHora(e.criado_em)} · ${esc(e.autor)}</small>${e.texto ? `<br>${esc(e.texto)}` : ""}</li>`).join("")}</ol></div>`;
 }
 
 // cliente: conferir e dar ciência
@@ -362,7 +455,7 @@ function bannerCancelada(s, admin) {
     <small class="quem">Justificativa</small><br>${esc(s.cancelamento_motivo)}</div>`;
 }
 function blocoCancelar(s) {
-  if (s.status !== "em_emissao") return "";
+  if (!ABERTOS.includes(s.status)) return "";
   return `<div id="cancelarArea" style="margin:0 0 14px"><button class="btn sec mini" id="btnCancelar">Cancelar solicitação</button>
     <div id="formCancelar" hidden style="margin-top:10px">
       <label for="motivoCancel">Justificativa do cancelamento (obrigatória, mínimo de 10 caracteres)</label>

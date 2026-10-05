@@ -22,9 +22,15 @@ const Mock = (() => {
   const ser = s => { const u = st.users.find(x => x.id === s.user_id);
     const { anexos, devolvida_por, cancelada_por, ...resto } = JSON.parse(JSON.stringify(s));
     const eu = me(), resp = devolvida_por && st.users.find(x => x.id === devolvida_por), canc = cancelada_por && st.users.find(x => x.id === cancelada_por);
-    return { ...resto, cancelada_por_perfil: canc ? canc.role : null,
+    const adm = !!(eu && eu.role === "admin");
+    const eventos = (resto.eventos || []).map(e => { const au = st.users.find(x => x.id === e.user_id);
+      return { tipo: e.tipo, texto: e.texto, criado_em: e.criado_em, autor: !au ? "Sistema" : adm ? au.nome : (au.role === "cliente" ? "Você" : "Atendimento") }; });
+    return { ...resto, eventos, exige_aceite: precisaAceite(s), cancelada_por_perfil: canc ? canc.role : null,
              ...(eu && eu.role === "admin" ? { devolvida_por: resp ? { id: resp.id, nome: resp.nome, username: resp.username } : null, cancelada_por: canc ? { nome: canc.nome } : null } : {}), anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
              total_calculado: soma(s.veiculos, "valor_calculado"), total_final: soma(s.veiculos, "valor_final") }; };
+  const precisaAceite = s => s.veiculos.some(v => v.tipo === "EXCLUSÃO" || v.tipo === "SUBSTITUIÇÃO");
+  const ABERTOS = ["em_emissao", "aguardando_aceite", "contestada", "aceita"];
+  const evento = (s, uid, tipo, texto) => { (s.eventos = s.eventos || []).push({ tipo, texto: texto || null, criado_em: new Date().toISOString(), user_id: uid }); };
   const achar = id => st.sols.find(s => s.id === +id) || fail("Solicitação não encontrada.", 404);
   const placaNorm = p => String(p || "").toUpperCase().replace(/[- ]/g, "");
 
@@ -71,23 +77,48 @@ const Mock = (() => {
     }
     const agora = new Date();
     const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null, parcelas,
-      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, devolvida_por: null, cancelada_em: null, cancelada_por: null, cancelamento_motivo: null, ciente_em: null, divergencia: null, veiculos: linhas };
-    st.sols.push(s); save(); return { solicitacao: ser(s) };
+      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, devolvida_por: null, aceite_em: null, aceite_por: null, rodada: 0, eventos: [], cancelada_em: null, cancelada_por: null, cancelamento_motivo: null, ciente_em: null, divergencia: null, veiculos: linhas };
+    evento(s, u.id, "criada"); st.sols.push(s); save(); return { solicitacao: ser(s) };
   }
-  function devolver(d, id) {
-    const eu = exige(true); const s = achar(id);
-    if (s.status !== "em_emissao") fail("Esta solicitação já foi devolvida.", 409);
-    if (!String(d.numero_endosso || "").trim()) fail("Informe o número do endosso.");
-    const upd = s.veiculos.map(v => {
+  function lerValores(s, d) {
+    return s.veiculos.map(v => {
       const x = (d.veiculos || []).find(y => +y.id === v.id); if (!x) fail(`Falta o valor final do veículo ${v.placa}.`);
       const ac = !!x.acionamento && v.tipo === "EXCLUSÃO"; let vf = ac ? 0 : parseFloat(x.valor_final);
       if (isNaN(vf)) fail(`Valor final inválido para ${v.placa}.`);
       if (v.tipo === "EXCLUSÃO") vf = -Math.abs(vf);
       return [v, ac, Math.round(vf * 100) / 100 + 0];
     });
-    upd.forEach(([v, ac, vf]) => { v.acionamento = ac; v.valor_final = vf; });
+  }
+  function proporValores(d, id) {
+    const eu = exige(true), s = achar(id);
+    if (!precisaAceite(s)) fail("Esta solicitação não tem exclusão nem substituição: devolva o endosso diretamente.", 409);
+    if (!["em_emissao", "contestada", "aceita"].includes(s.status)) fail("Nesta etapa não é possível enviar valores ao cliente.", 409);
+    lerValores(s, d).forEach(([v, ac, vf]) => { v.acionamento = ac; v.valor_final = vf; });
+    Object.assign(s, { status: "aguardando_aceite", rodada: (s.rodada || 0) + 1, aceite_em: null, aceite_por: null });
+    evento(s, eu.id, "valores_enviados", String(d.observacao || "").trim().slice(0, 2000)); save(); return { solicitacao: ser(s) };
+  }
+  function volta(s, u, tipo, texto) { s.prazo_em = prazoHorasUteis(new Date()).toISOString(); evento(s, u.id, tipo, texto); save(); return { solicitacao: ser(s) }; }
+  function aceitarValores(u, d, id) {
+    const s = achar(id); if (s.user_id !== u.id) fail("Solicitação não encontrada.", 404);
+    if (s.status !== "aguardando_aceite") fail("Esta solicitação não está aguardando o seu aceite.", 409);
+    if (d.de_acordo !== true) fail("Confirme que está de acordo com os valores para aceitar.");
+    Object.assign(s, { status: "aceita", aceite_em: new Date().toISOString(), aceite_por: u.id }); return volta(s, u, "aceite", null);
+  }
+  function contestarValores(u, d, id) {
+    const s = achar(id); if (s.user_id !== u.id) fail("Solicitação não encontrada.", 404);
+    if (s.status !== "aguardando_aceite") fail("Esta solicitação não está aguardando o seu aceite.", 409);
+    const motivo = String(d.motivo || "").trim(); if (motivo.length < 10) fail("Explique por que não concorda com os valores (mínimo de 10 caracteres).");
+    s.status = "contestada"; return volta(s, u, "contestada", motivo.slice(0, 2000));
+  }
+  function devolver(d, id) {
+    const eu = exige(true); const s = achar(id), aceite = precisaAceite(s);
+    if (s.status === "cancelada") fail("Esta solicitação foi cancelada.", 409);
+    if (aceite && s.status !== "aceita") fail(["devolvida", "ciente"].includes(s.status) ? "Esta solicitação já foi devolvida." : "Os valores precisam ser aceitos pelo cliente antes de emitir o endosso.", 409);
+    if (!aceite && s.status !== "em_emissao") fail("Esta solicitação já foi devolvida.", 409);
+    if (!String(d.numero_endosso || "").trim()) fail("Informe o número do endosso.");
+    if (!aceite) lerValores(s, d).forEach(([v, ac, vf]) => { v.acionamento = ac; v.valor_final = vf; }); // com aceite, os valores aceitos não mudam
     Object.assign(s, { status: "devolvida", numero_endosso: String(d.numero_endosso).trim(), observacao: String(d.observacao || "").trim(), devolvida_em: new Date().toISOString(), devolvida_por: eu.id });
-    save(); return { solicitacao: ser(s) };
+    evento(s, eu.id, "devolvida", String(d.observacao || "").trim() || null); save(); return { solicitacao: ser(s) };
   }
   const lerArq = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error("Não foi possível ler o arquivo.")); r.readAsDataURL(f); });
   async function devolverForm(form, id) {
@@ -111,7 +142,7 @@ const Mock = (() => {
     const conf = new Set((d.confirmados || []).map(Number)), dv = String(d.divergencia || "").trim();
     if (!s.veiculos.every(v => conf.has(v.id)) && !dv) fail("Há veículos não confirmados. Descreva a divergência no campo de comunicação.");
     s.veiculos.forEach(v => v.confirmado = conf.has(v.id));
-    Object.assign(s, { status: "ciente", ciente_em: new Date().toISOString(), divergencia: dv || null }); save(); return { solicitacao: ser(s) };
+    Object.assign(s, { status: "ciente", ciente_em: new Date().toISOString(), divergencia: dv || null }); evento(s, u.id, "ciente", dv || null); save(); return { solicitacao: ser(s) };
   }
 
   const emailOk = e => /^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$/.test(String(e || "").trim().toLowerCase());
@@ -121,9 +152,9 @@ const Mock = (() => {
   function cancelar(u, d, id) {
     const s = achar(id); if (u.role !== "admin" && s.user_id !== u.id) fail("Solicitação não encontrada.", 404);
     if (s.status === "cancelada") fail("Esta solicitação já foi cancelada.", 409);
-    if (s.status !== "em_emissao") fail("Só é possível cancelar solicitações que ainda não foram devolvidas.", 409);
+    if (!ABERTOS.includes(s.status)) fail("Só é possível cancelar solicitações que ainda não foram devolvidas.", 409);
     const motivo = String(d.motivo || "").trim(); if (motivo.length < 10) fail("Descreva a justificativa do cancelamento (mínimo de 10 caracteres).");
-    Object.assign(s, { status: "cancelada", cancelada_em: new Date().toISOString(), cancelada_por: u.id, cancelamento_motivo: motivo.slice(0, 2000) }); save(); return { solicitacao: ser(s) };
+    Object.assign(s, { status: "cancelada", cancelada_em: new Date().toISOString(), cancelada_por: u.id, cancelamento_motivo: motivo.slice(0, 2000) }); evento(s, u.id, "cancelada", motivo.slice(0, 2000)); save(); return { solicitacao: ser(s) };
   }
   function minhaSenha(u, d) {
     if (d.atual !== u.password) fail("A senha atual está incorreta.");
@@ -179,6 +210,9 @@ const Mock = (() => {
       if (String(d.senha || "").length < 8) fail("A senha precisa ter pelo menos 8 caracteres.");
       r.u.password = d.senha; r.u.trocar = false; r.k.usado = true; save(); return { ok: true, usuario: r.u.username, email: r.u.email }; }
     if ((m = path.match(/^\/solicitacoes\/(\d+)\/cancelar$/))) return cancelar(exige(), d, m[1]);
+    if ((m = path.match(/^\/solicitacoes\/(\d+)\/propor-valores$/))) return proporValores(d, m[1]);
+    if ((m = path.match(/^\/solicitacoes\/(\d+)\/aceitar-valores$/))) return aceitarValores(exige(), d, m[1]);
+    if ((m = path.match(/^\/solicitacoes\/(\d+)\/contestar-valores$/))) return contestarValores(exige(), d, m[1]);
     if (path === "/solicitacoes" && method === "GET") { const u = exige();
       return { solicitacoes: st.sols.filter(s => u.role === "admin" || s.user_id === u.id).map(ser).reverse() }; }
     if (path === "/solicitacoes") return criar(exige(), d);

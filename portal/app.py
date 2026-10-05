@@ -74,7 +74,11 @@ CREATE TABLE IF NOT EXISTS solicitacoes (
   criado_em TEXT NOT NULL, prazo_em TEXT NOT NULL, vigencia TEXT,
   status TEXT NOT NULL DEFAULT 'em_emissao', numero_endosso TEXT, observacao TEXT,
   devolvida_em TEXT, ciente_em TEXT, divergencia TEXT, devolvida_por INTEGER REFERENCES users(id),
-  parcelas INTEGER NOT NULL DEFAULT 1, cancelada_em TEXT, cancelada_por INTEGER REFERENCES users(id), cancelamento_motivo TEXT);
+  parcelas INTEGER NOT NULL DEFAULT 1, aceite_em TEXT, aceite_por INTEGER REFERENCES users(id), rodada INTEGER NOT NULL DEFAULT 0,
+  cancelada_em TEXT, cancelada_por INTEGER REFERENCES users(id), cancelamento_motivo TEXT);
+CREATE TABLE IF NOT EXISTS eventos (
+  id INTEGER PRIMARY KEY, solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes(id), user_id INTEGER REFERENCES users(id),
+  tipo TEXT NOT NULL, texto TEXT, criado_em TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS tokens (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), hash TEXT UNIQUE NOT NULL,
   tipo TEXT NOT NULL CHECK (tipo IN ('convite','reset')), expira_em TEXT NOT NULL, usado_em TEXT, criado_em TEXT NOT NULL);
@@ -119,6 +123,9 @@ def init_db():
     adm_email = (os.environ.get('ADMIN_EMAIL') or '').strip().lower()  # e-mail do admin original, para bancos criados antes do login por e-mail
     if adm_email and not con.execute("SELECT 1 FROM users WHERE email=?", (adm_email,)).fetchone():
         con.execute("UPDATE users SET email=? WHERE username='admin' AND email IS NULL", (adm_email,))
+    for col, tipo_col in (('aceite_em', 'TEXT'), ('aceite_por', 'INTEGER'), ('rodada', 'INTEGER NOT NULL DEFAULT 0')):  # bancos criados antes do aceite de valores
+        if col not in {r[1] for r in con.execute('PRAGMA table_info(solicitacoes)')}:
+            con.execute(f'ALTER TABLE solicitacoes ADD COLUMN {col} {tipo_col}')
     for col in ('cancelada_em', 'cancelada_por', 'cancelamento_motivo'):  # bancos criados antes do cancelamento
         if col not in {r[1] for r in con.execute('PRAGMA table_info(solicitacoes)')}:
             con.execute(f'ALTER TABLE solicitacoes ADD COLUMN {col} ' + ('INTEGER' if col == 'cancelada_por' else 'TEXT'))
@@ -318,6 +325,58 @@ def enviar_link(u, tipo):
     return True, None
 
 
+# ---------------------------------------------------------------- chamado: ida e volta de valores (exclusão e substituição)
+# Pedidos com exclusão ou substituição passam por aceite: o administrador propõe os valores, o cliente aceita (ou contesta com
+# justificativa) e só então o endosso é emitido. Cada passo fica no histórico (eventos).
+STATUS_ABERTOS = ("em_emissao", "aguardando_aceite", "contestada", "aceita")  # antes da devolução (ainda cancelável)
+
+
+def precisa_aceite(sid):
+    return db().execute("SELECT 1 FROM veiculos WHERE solicitacao_id=? AND tipo IN ('EXCLUSÃO','SUBSTITUIÇÃO')", (sid,)).fetchone() is not None
+
+
+def registrar(sid, uid, tipo, texto=None):
+    db().execute("INSERT INTO eventos(solicitacao_id,user_id,tipo,texto,criado_em) VALUES(?,?,?,?,?)", (sid, uid, tipo, texto, iso(agora())))
+    db().commit()
+
+
+def emails_admins():
+    return [r[0] for r in db().execute("SELECT email FROM users WHERE role='admin' AND ativo=1 AND email IS NOT NULL")]
+
+
+def email_de(uid):
+    r = db().execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
+    return [r[0]] if r and r[0] else []
+
+
+def notificar(destinos, assunto, texto):
+    """Avisa por e-mail quem precisa agir (só se o SMTP estiver configurado)."""
+    if not email_ativo():
+        return
+    base = os.environ.get("PORTAL_URL", "").rstrip("/") or request.host_url.rstrip("/")
+    for d in sorted(set(destinos)):
+        enviar_email(d, assunto, f"{texto}\n\nAcesse o portal: {base}\n")
+
+
+def _ler_valores(sid, d):
+    """Lê {id, acionamento, valor_final} de cada veículo. Devolve (updates, mensagem_de_erro)."""
+    por_id = {int(x.get("id")): x for x in d.get("veiculos", []) if str(x.get("id", "")).isdigit()}
+    updates = []
+    for v in db().execute("SELECT * FROM veiculos WHERE solicitacao_id=?", (sid,)).fetchall():
+        x = por_id.get(v["id"])
+        if x is None:
+            return None, f"Falta o valor final do veículo {v['placa']}."
+        acion = bool(x.get("acionamento")) and v["tipo"] == "EXCLUSÃO"
+        try:
+            vf = 0.0 if acion else float(x.get("valor_final"))
+        except (TypeError, ValueError):
+            return None, f"Valor final inválido para {v['placa']}."
+        if v["tipo"] == "EXCLUSÃO":
+            vf = -abs(vf)  # exclusão nunca é positiva
+        updates.append((int(acion), round(vf, 2) + 0.0, v["id"]))
+    return updates, None
+
+
 # ---------------------------------------------------------------- regras
 def agora():
     return datetime.now(timezone.utc)
@@ -436,6 +495,11 @@ def serializa(s):
         for x in anexos:
             x.pop("sp_url"), x.pop("sp_erro")
     r = dict(s, usuario=dict(u), veiculos=vs, anexos=anexos, total_calculado=soma("valor_calculado"), total_final=soma("valor_final"))
+    adm_ = bool(quem and quem["role"] == "admin")
+    r_ev = db().execute("SELECT e.tipo, e.texto, e.criado_em, u.nome, u.role FROM eventos e LEFT JOIN users u ON u.id=e.user_id WHERE e.solicitacao_id=? ORDER BY e.id", (s["id"],)).fetchall()
+    r["exige_aceite"] = any(v["tipo"] in ("EXCLUSÃO", "SUBSTITUIÇÃO") for v in vs)
+    r["eventos"] = [dict(tipo=x["tipo"], texto=x["texto"], criado_em=x["criado_em"],  # o cliente vê "Você" e "Atendimento", sem nomes de administradores
+                         autor=("Sistema" if not x["nome"] else x["nome"] if adm_ else ("Você" if x["role"] == "cliente" else "Atendimento"))) for x in r_ev]
     canc = db().execute("SELECT u.nome, u.role FROM users u WHERE u.id=?", (s["cancelada_por"],)).fetchone() if s["cancelada_por"] else None
     r["cancelada_por_perfil"] = canc["role"] if canc else None  # o cliente só sabe se foi ele ou o atendimento
     if quem and quem["role"] == "admin":
@@ -829,6 +893,8 @@ def criar_solicitacao():
                         placa_substituida,data_endosso,valor_inicial,dias,valor_calculado,ano_fab,ano_mod) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                      [(sid, *l) for l in linhas])
     db().commit()
+    registrar(sid, u["id"], "criada")
+    notificar(emails_admins(), f"Nova solicitação de endosso nº {sid}", f"{u['nome']} abriu a solicitação nº {sid} ({len(linhas)} veículo(s)).")
     s = db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()
     return jsonify(solicitacao=serializa(s)), 201
 
@@ -841,7 +907,14 @@ def devolver(sid):
     s = db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()
     if not s:
         return erro("Solicitação não encontrada.", 404)
-    if s["status"] != "em_emissao":
+    aceite = precisa_aceite(sid)
+    if s["status"] == "cancelada":
+        return erro("Esta solicitação foi cancelada.", 409)
+    if aceite and s["status"] != "aceita":
+        if s["status"] in ("devolvida", "ciente"):
+            return erro("Esta solicitação já foi devolvida.", 409)
+        return erro("Os valores precisam ser aceitos pelo cliente antes de emitir o endosso.", 409)
+    if not aceite and s["status"] != "em_emissao":
         return erro("Esta solicitação já foi devolvida.", 409)
     if request.files or request.form:  # multipart: campo "dados" (JSON) + arquivos "endosso" e "boleto"
         try:
@@ -867,26 +940,18 @@ def devolver(sid):
             return erro(f"O arquivo do {rotulo.lower()} não é um PDF válido.")
         nome = re.sub(r"[^\w .()\-]", "_", os.path.basename(f.filename))[:120]
         anexos[tipo] = (nome, conteudo)
-    por_id = {int(x.get("id")): x for x in d.get("veiculos", []) if str(x.get("id", "")).isdigit()}
-    updates = []
-    for v in db().execute("SELECT * FROM veiculos WHERE solicitacao_id=?", (sid,)).fetchall():
-        x = por_id.get(v["id"])
-        if x is None:
-            return erro(f"Falta o valor final do veículo {v['placa']}.")
-        acion = bool(x.get("acionamento")) and v["tipo"] == "EXCLUSÃO"
-        try:
-            vf = 0.0 if acion else float(x.get("valor_final"))
-        except (TypeError, ValueError):
-            return erro(f"Valor final inválido para {v['placa']}.")
-        if v["tipo"] == "EXCLUSÃO":
-            vf = -abs(vf)  # exclusão nunca é positiva
-        updates.append((int(acion), round(vf, 2) + 0.0, v["id"]))
-    db().executemany("UPDATE veiculos SET acionamento=?, valor_final=? WHERE id=?", updates)
+    if not aceite:  # com aceite, os valores são os que o cliente aceitou: não mudam na emissão
+        updates, msg = _ler_valores(sid, d)
+        if msg:
+            return erro(msg)
+        db().executemany("UPDATE veiculos SET acionamento=?, valor_final=? WHERE id=?", updates)
     db().executemany("INSERT INTO anexos(solicitacao_id,tipo,nome,conteudo,criado_em) VALUES(?,?,?,?,?)",
                      [(sid, t, n, c, iso(agora())) for t, (n, c) in anexos.items()])
     db().execute("UPDATE solicitacoes SET status='devolvida', numero_endosso=?, observacao=?, devolvida_em=?, devolvida_por=? WHERE id=?",
                  (numero[:60], str(d.get("observacao", "")).strip()[:2000], iso(agora()), eu["id"], sid))
     db().commit()
+    registrar(sid, eu["id"], "devolvida", str(d.get("observacao", "")).strip()[:2000] or None)
+    notificar(email_de(s["user_id"]), f"Seu endosso foi emitido (solicitação {sid})", f"O endosso da solicitação nº {sid} foi emitido e está disponível no portal. Confira os documentos e dê a sua ciência.")
     if sp_ativo():
         arquivar_sharepoint(sid)  # falha aqui não bloqueia a devolução: o admin vê o erro e pode tentar de novo
     return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
@@ -939,6 +1004,76 @@ def baixar_anexo(sid, tipo):
     return r
 
 
+@app.post("/api/solicitacoes/<int:sid>/propor-valores")
+def propor_valores(sid):
+    """Administrador envia os valores ao cliente para aceite (exclusão e substituição). Pode ser repetido a cada contestação."""
+    eu, e = exige_login(admin=True)
+    if e:
+        return e
+    s = db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()
+    if not s:
+        return erro("Solicitação não encontrada.", 404)
+    if not precisa_aceite(sid):
+        return erro("Esta solicitação não tem exclusão nem substituição: devolva o endosso diretamente.", 409)
+    if s["status"] not in ("em_emissao", "contestada", "aceita"):
+        return erro("Nesta etapa não é possível enviar valores ao cliente.", 409)
+    d = request.get_json(silent=True) or {}
+    updates, msg = _ler_valores(sid, d)
+    if msg:
+        return erro(msg)
+    obs = str(d.get("observacao", "")).strip()[:2000]
+    db().executemany("UPDATE veiculos SET acionamento=?, valor_final=? WHERE id=?", updates)
+    db().execute("UPDATE solicitacoes SET status='aguardando_aceite', rodada=rodada+1, aceite_em=NULL, aceite_por=NULL WHERE id=?", (sid,))
+    db().commit()
+    registrar(sid, eu["id"], "valores_enviados", obs or None)
+    notificar(email_de(s["user_id"]), f"Valores aguardando o seu aceite (solicitação {sid})", f"O atendimento enviou os valores da solicitação nº {sid}. Acesse o portal para aceitar ou contestar.")
+    return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
+
+
+def _devolve_ao_atendimento(sid, u, tipo, texto, assunto, aviso):
+    """O cliente respondeu: a bola volta ao atendimento, que ganha novo prazo (48h úteis)."""
+    agora_ = agora()
+    db().execute("UPDATE solicitacoes SET prazo_em=? WHERE id=?", (iso(prazo_horas_uteis(agora_)), sid))
+    db().commit()
+    registrar(sid, u["id"], tipo, texto)
+    notificar(emails_admins(), assunto, aviso)
+
+
+@app.post("/api/solicitacoes/<int:sid>/aceitar-valores")
+def aceitar_valores(sid):
+    u, e = exige_login()
+    if e:
+        return e
+    s = db().execute("SELECT * FROM solicitacoes WHERE id=? AND user_id=?", (sid, u["id"])).fetchone()
+    if not s:
+        return erro("Solicitação não encontrada.", 404)
+    if s["status"] != "aguardando_aceite":
+        return erro("Esta solicitação não está aguardando o seu aceite.", 409)
+    if (request.get_json(silent=True) or {}).get("de_acordo") is not True:
+        return erro("Confirme que está de acordo com os valores para aceitar.")
+    db().execute("UPDATE solicitacoes SET status='aceita', aceite_em=?, aceite_por=? WHERE id=?", (iso(agora()), u["id"], sid))
+    _devolve_ao_atendimento(sid, u, "aceite", None, f"Valores aceitos (solicitação {sid})", f"{u['nome']} aceitou os valores da solicitação nº {sid}. O endosso já pode ser emitido.")
+    return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
+
+
+@app.post("/api/solicitacoes/<int:sid>/contestar-valores")
+def contestar_valores(sid):
+    u, e = exige_login()
+    if e:
+        return e
+    s = db().execute("SELECT * FROM solicitacoes WHERE id=? AND user_id=?", (sid, u["id"])).fetchone()
+    if not s:
+        return erro("Solicitação não encontrada.", 404)
+    if s["status"] != "aguardando_aceite":
+        return erro("Esta solicitação não está aguardando o seu aceite.", 409)
+    motivo = str((request.get_json(silent=True) or {}).get("motivo", "")).strip()
+    if len(motivo) < 10:
+        return erro("Explique por que não concorda com os valores (mínimo de 10 caracteres).")
+    db().execute("UPDATE solicitacoes SET status='contestada' WHERE id=?", (sid,))
+    _devolve_ao_atendimento(sid, u, "contestada", motivo[:2000], f"Valores contestados (solicitação {sid})", f"{u['nome']} contestou os valores da solicitação nº {sid}: {motivo[:500]}")
+    return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
+
+
 @app.post("/api/solicitacoes/<int:sid>/cancelar")
 def cancelar(sid):
     """Cancela uma solicitação ainda não devolvida. O cliente cancela as próprias; o administrador, qualquer uma. Exige justificativa."""
@@ -950,7 +1085,7 @@ def cancelar(sid):
         return erro("Solicitação não encontrada.", 404)
     if s["status"] == "cancelada":
         return erro("Esta solicitação já foi cancelada.", 409)
-    if s["status"] != "em_emissao":
+    if s["status"] not in STATUS_ABERTOS:
         return erro("Só é possível cancelar solicitações que ainda não foram devolvidas.", 409)
     motivo = str((request.get_json(silent=True) or {}).get("motivo", "")).strip()
     if len(motivo) < 10:
@@ -958,6 +1093,8 @@ def cancelar(sid):
     db().execute("UPDATE solicitacoes SET status='cancelada', cancelada_em=?, cancelada_por=?, cancelamento_motivo=? WHERE id=?",
                  (iso(agora()), u["id"], motivo[:2000], sid))
     db().commit()
+    registrar(sid, u["id"], "cancelada", motivo[:2000])
+    notificar(emails_admins() if u["role"] != "admin" else email_de(s["user_id"]), f"Solicitação nº {sid} cancelada", f"A solicitação nº {sid} foi cancelada. Justificativa: {motivo[:500]}")
     return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
 
 
@@ -1004,6 +1141,7 @@ def ciente(sid):
     db().execute("UPDATE solicitacoes SET status='ciente', ciente_em=?, divergencia=? WHERE id=?",
                  (iso(agora()), diverg or None, sid))
     db().commit()
+    registrar(sid, u["id"], "ciente", diverg or None)
     return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
 
 

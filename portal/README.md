@@ -73,6 +73,26 @@ contrato, **valor pró rata (calculado)**, valor final (devolvido), acionamento,
 divergência e anexos. Separador `;`, valores com vírgula (abre direto no Excel em português). O ano de fabricação e o ano do
 modelo são obrigatórios no cadastro e na importação.
 
+## Chamado de valores (exclusão e substituição)
+
+Solicitações que têm **exclusão ou substituição** funcionam como um chamado de ida e volta, com histórico:
+
+1. O cliente abre a solicitação. O atendimento analisa (placa/acionamento) e **envia os valores** para aceite, por exemplo uma
+   substituição zerada (R$ 0,00) e a exclusão com ou sem restituição, com uma observação.
+2. O cliente vê os valores e **aceita** (marcando que está de acordo) ou **contesta** com justificativa (mín. 10 caracteres).
+3. Se contestar, a solicitação volta ao atendimento, que **envia novos valores** (nova rodada). Se aceitar, o atendimento
+   **emite o endosso** (nº e PDFs) e devolve. Os valores aceitos **não mudam** na emissão; para mudá-los é preciso abrir um novo
+   aceite ("Alterar valores").
+4. O cliente dá a **ciência** do endosso emitido (como antes). Em qualquer etapa antes da devolução dá para **cancelar** (com
+   justificativa).
+
+Solicitações **só de inclusão** seguem o caminho direto (o atendimento emite e devolve, sem aceite).
+O **prazo de 48h úteis** vale para cada etapa em que a solicitação está com o atendimento: abertura, contestação e aceite
+reiniciam a contagem; enquanto aguarda o cliente, não há prazo. Quem tem a vez aparece na lista (ex.: "Aguardando aceite do
+cliente"). Com o e-mail configurado, quem precisa agir recebe um aviso: o atendimento (nova solicitação, aceite, contestação,
+cancelamento) e o cliente (valores para aceitar, endosso emitido). O histórico mostra ao cliente "Você" e "Atendimento"
+(nomes de administradores só aparecem para administradores).
+
 ## Regras
 
 - **Senhas:** o administrador redefine a senha de qualquer usuário (cliente ou administrador) em *Usuários → Redefinir senha*.

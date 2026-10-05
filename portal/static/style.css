@@ -55,3 +55,4 @@
   .toast { position:fixed; left:16px; right:16px; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); max-width:520px; margin:0 auto; padding:12px 16px; border-radius:10px; background:var(--card); border:1px solid var(--brand); color:var(--text); z-index:10; }
   .col-ps { display:none; } .com-sub .col-ps { display:table-cell; }
   .tag.off { opacity:.75; text-decoration:line-through; }
+  .hist { margin:0; padding-left:20px; display:grid; gap:10px; } .hist li { line-height:1.5; }
