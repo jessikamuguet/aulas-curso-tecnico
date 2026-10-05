@@ -191,8 +191,7 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     const subs = lerVeiculos().filter(v => v.tp === "SUBSTITUIÇÃO");
     $("avisoSub").hidden = !subs.length;
     if (!subs.length) return;
-    const placas = subs.map(v => esc(v.pl || "(placa não informada)") + (v.ps ? " (substitui " + esc(v.ps) + ")" : "")).join(", ");
-    $("avisoSub").innerHTML = `<b>Substituição:</b> antes de prosseguir com o cálculo, iremos analisar a placa internamente, pois é necessário verificar em outro site se houve acionamentos dessa placa. Veículo(s): ${placas}. Esses veículos não entram no cálculo agora e retornaremos após a análise.`;
+    $("avisoSub").textContent = "Antes de prosseguir com a substituição a placa informada passará por análise interna e após o retorno da análise, retornamos com o cálculo da substituição.";
   }
 
   function etapa(n) { $("etapa1").hidden = n !== 1; $("etapa2").hidden = n !== 2; }
