@@ -85,17 +85,21 @@ function desenharAdmin() {
     <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td></tr>`).join("");
 }
 $("filtroStatus").onchange = desenharAdmin;
-$("csv").onclick = () => {
+// Planilha para o administrativo: uma linha por veículo, com os dados do veículo e o valor da pró rata
+const numBR = v => v == null ? "" : v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function baixarPlanilha(sols, arquivo) {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const cab = ["Nº","Usuário","Nome","Data da solicitação","Prazo","Situação","Nº endosso","Devolvida em","Ciência em","Divergência","Anexos","Placa","Tipo","Contrato","Valor calculado","Valor final","Acionamento"];
-  const linhas = [cab];
-  filtradas().forEach(s => s.veiculos.forEach(v => linhas.push([s.id, s.usuario.username, s.usuario.nome, fmtDataHora(s.criado_em), fmtDataHora(s.prazo_em), STATUS_ADMIN[s.status],
-    s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em), s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(), v.placa, v.tipo, v.contrato,
-    v.valor_calculado, v.valor_final, v.acionamento ? "Sim" : "Não"])));
+  const linhas = [["Nº solicitação","Data da solicitação","Usuário","Nome","Placa","Marca/Modelo","Chassi","Ano fabricação","Ano modelo","Tipo","Contrato",
+    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Situação","Prazo","Nº endosso","Devolvida em","Ciência em","Divergência","Anexos"]];
+  sols.forEach(s => s.veiculos.forEach(v => linhas.push([s.id, fmtDataHora(s.criado_em), s.usuario.username, s.usuario.nome, v.placa, v.marca_modelo, v.chassi,
+    v.ano_fab, v.ano_mod, v.tipo, v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "",
+    STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
+    s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(" + ")])));
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob(["﻿" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
-  a.download = "solicitacoes-endossos.csv"; a.click();
-};
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
+  a.download = arquivo; a.click();
+}
+$("csv").onclick = () => baixarPlanilha(filtradas(), "solicitacoes-endossos.csv");
 
 // ---------- admin: usuários
 async function telaUsuarios() {
@@ -115,7 +119,7 @@ $("fUsuario").onsubmit = async e => {
 async function telaDetalhe(id) {
   const { solicitacao: s } = await API.get("/solicitacoes/" + id);
   const admin = USER.role === "admin";
-  const cab = `<div class="topo"><h2>Solicitação nº ${s.id}</h2>${admin ? badgeAdmin(s) + " " + prazoTxt(s) : `<span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span>`}</div>
+  const cab = `<div class="topo"><h2>Solicitação nº ${s.id}</h2>${admin ? badgeAdmin(s) + " " + prazoTxt(s) + ' <button class="btn sec mini" id="baixarSol">Baixar planilha</button>' : `<span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span>`}</div>
     <div class="kv">
       <div><small>Solicitante</small>${esc(s.usuario.nome)}</div>
       <div><small>Data da solicitação</small>${fmtDataHora(s.criado_em)}</div>
@@ -131,6 +135,7 @@ async function telaDetalhe(id) {
   else if (s.status === "devolvida") corpo = formCiente(s);
   else corpo = tabelaFinal(s, true);
   $("detalhe").innerHTML = `<div class="card">${cab}${blocoAnexos(s)}${blocoSp(s)}${corpo}</div>`;
+  if (admin) $("baixarSol").onclick = () => baixarPlanilha([s], `solicitacao-${s.id}.csv`);
   if (admin && s.status === "em_emissao") ligarDevolver(s);
   if (!admin && s.status === "devolvida") ligarCiente(s);
   if ($("reenviarSp")) $("reenviarSp").onclick = async () => {
@@ -157,18 +162,18 @@ function blocoSp(s) {
 }
 const tipoTag = v => v.tipo[0] + v.tipo.slice(1).toLowerCase();
 function tabelaSolicitada(s) {
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
-    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}</td><td>${esc(v.chassi)}</td><td>${esc(v.contrato)}</td><td>${tipoTag(v)}</td><td>${esc(v.placa_substituida || "-")}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Ano fab./mod.</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
+    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}</td><td>${esc(v.chassi)}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${esc(v.contrato)}</td><td>${tipoTag(v)}</td><td>${esc(v.placa_substituida || "-")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function valorTxt(v) {
   if (v.tipo === "EXCLUSÃO" && v.acionamento) return `${brl(0)} <span class="tag bad">Acionamento: sem restituição</span>`;
   return brl(v.valor_final);
 }
 function tabelaFinal(s, obs) {
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor</th>${s.status === "ciente" ? "<th>Confere</th>" : ""}</tr></thead><tbody>${
-    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td>
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Tipo</th><th>Contrato</th><th>Valor</th>${s.status === "ciente" ? "<th>Confere</th>" : ""}</tr></thead><tbody>${
+    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td>
       <td class="n">${valorTxt(v)}</td>${s.status === "ciente" ? `<td>${v.confirmado ? "Sim" : "<b>Não</b>"}</td>` : ""}</tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="4" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td>${s.status === "ciente" ? "<td></td>" : ""}</tr></tfoot></table></div>
+    <tfoot><tr><td colspan="5" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td>${s.status === "ciente" ? "<td></td>" : ""}</tr></tfoot></table></div>
     ${obs && s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}
     ${s.divergencia ? `<div class="aviso"><b>Divergência comunicada pelo cliente:</b><br>${esc(s.divergencia)}</div>` : ""}
     ${s.status === "ciente" && !s.divergencia ? `<div class="ok">O cliente declarou ter recebido e estar de acordo com as informações.</div>` : ""}`;
@@ -179,12 +184,12 @@ function formDevolver(s) {
   const linhas = s.veiculos.map(v => {
     const exc = v.tipo === "EXCLUSÃO", sub = v.tipo === "SUBSTITUIÇÃO";
     return `<tr data-vid="${v.id}" data-tipo="${v.tipo}"><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${sub ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td>
-      <td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${sub ? "-" : brl(v.valor_calculado)}</td>
+      <td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${sub ? "-" : brl(v.valor_calculado)}</td>
       <td>${exc ? '<label class="chkl" style="margin:0"><input type="checkbox" class="ac"> Teve acionamento</label>' : "-"}</td>
       <td><input class="vf" type="number" step="0.01" style="min-width:120px" value="${v.valor_calculado ?? ""}" ${sub ? 'placeholder="informar"' : ""}></td></tr>`;
   }).join("");
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
-    <tbody>${linhas}</tbody><tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
+    <tbody>${linhas}</tbody><tfoot><tr><td colspan="7" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
     <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa.</div>
     <div class="grid">
       <div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div>

@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS veiculos (
   id INTEGER PRIMARY KEY, solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes(id),
   marca_modelo TEXT, placa TEXT, chassi TEXT, contrato TEXT, tipo TEXT,
   placa_substituida TEXT, data_endosso TEXT, valor_inicial REAL, dias INTEGER,
-  valor_calculado REAL, acionamento INTEGER DEFAULT 0, valor_final REAL, confirmado INTEGER DEFAULT 0);
+  valor_calculado REAL, acionamento INTEGER DEFAULT 0, valor_final REAL, confirmado INTEGER DEFAULT 0,
+  ano_fab INTEGER, ano_mod INTEGER);
 CREATE TABLE IF NOT EXISTS anexos (
   id INTEGER PRIMARY KEY, solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes(id),
   tipo TEXT NOT NULL CHECK (tipo IN ('endosso','boleto')), nome TEXT, conteudo BLOB NOT NULL, criado_em TEXT NOT NULL,
@@ -82,6 +83,9 @@ def _close(_exc):
 def init_db():
     con = sqlite3.connect(DB_PATH)
     con.executescript(SCHEMA)
+    for col in ('ano_fab', 'ano_mod'):  # bancos criados antes dos anos do veículo
+        if col not in {r[1] for r in con.execute('PRAGMA table_info(veiculos)')}:
+            con.execute(f'ALTER TABLE veiculos ADD COLUMN {col} INTEGER')
     for col in ('sp_url', 'sp_erro'):  # bancos criados antes da integração com SharePoint
         if col not in {r[1] for r in con.execute('PRAGMA table_info(anexos)')}:
             con.execute(f'ALTER TABLE anexos ADD COLUMN {col} TEXT')
@@ -400,6 +404,12 @@ def criar_solicitacao():
             if placa in placas:
                 raise ValueError(f"Placa repetida na solicitação: {placa}.")
             placas.add(placa)
+            try:
+                af, am = int(v.get("ano_fab")), int(v.get("ano_mod"))
+            except (TypeError, ValueError):
+                raise ValueError(f"Veículo {i}: informe o ano de fabricação e o ano do modelo.")
+            if not (1950 <= af <= 2100 and 1950 <= am <= 2100):
+                raise ValueError(f"Veículo {i}: ano de fabricação/modelo inválido.")
             ps = re.sub(r"[- ]", "", str(v.get("placa_substituida", "")).upper())
             if tipo == "SUBSTITUIÇÃO" and not ps:
                 raise ValueError(f"Veículo {i}: informe a placa do veículo substituído.")
@@ -412,7 +422,7 @@ def criar_solicitacao():
                 dias, valor_calc = calcular(tipo, vig, de, vi)
                 data_e = de.isoformat()
             linhas.append((mm[:120], placa, chassi, str(v.get("contrato", "")).strip()[:60], tipo,
-                           ps or None, data_e, vi, dias, valor_calc))
+                           ps or None, data_e, vi, dias, valor_calc, af, am))
     except (ValueError, TypeError) as ex:
         return erro(str(ex) if isinstance(ex, ValueError) and str(ex) else "Dados inválidos na solicitação.")
     agora_ = agora()
@@ -420,7 +430,7 @@ def criar_solicitacao():
                        (u["id"], iso(agora_), iso(prazo_horas_uteis(agora_)), vig.isoformat() if vig else None))
     sid = cur.lastrowid
     db().executemany("""INSERT INTO veiculos(solicitacao_id,marca_modelo,placa,chassi,contrato,tipo,
-                        placa_substituida,data_endosso,valor_inicial,dias,valor_calculado) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                        placa_substituida,data_endosso,valor_inicial,dias,valor_calculado,ano_fab,ano_mod) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                      [(sid, *l) for l in linhas])
     db().commit()
     s = db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()

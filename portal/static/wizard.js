@@ -4,10 +4,10 @@
   // Etapa 1
   function addVeiculo(v = {}) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td>
+    tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="af" inputmode="numeric" maxlength="4" size="5"></td><td><input class="am" inputmode="numeric" maxlength="4" size="5"></td><td><input class="np"></td>
       <td><select class="tp">${opts}</select></td><td><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
     const q = s => tr.querySelector(s);
-    q(".tp").value = v.tp || "INCLUSÃO"; q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || "";
+    q(".tp").value = v.tp || "INCLUSÃO"; q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || ""; q(".af").value = v.af || ""; q(".am").value = v.am || "";
     q(".tp").onchange = e => { q(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; avisoSub(); };
     q(".ps").oninput = avisoSub; q(".pl").oninput = avisoSub;
     q(".x").onclick = () => { tr.remove(); avisoSub(); syncContrato(); };
@@ -29,7 +29,7 @@
 
   const lerVeiculos = () => [...$("veiculos").children].map(tr => ({
     mm: tr.querySelector(".mm").value.trim(), pl: tr.querySelector(".pl").value.trim(),
-    ch: tr.querySelector(".ch").value.trim(), np: tr.querySelector(".np").value.trim(),
+    ch: tr.querySelector(".ch").value.trim(), af: tr.querySelector(".af").value.trim(), am: tr.querySelector(".am").value.trim(), np: tr.querySelector(".np").value.trim(),
     tp: tr.querySelector(".tp").value, ps: tr.querySelector(".ps").value.trim() }));
 
   const AVISO_EXC = "Exclusão: a placa passará por avaliação de acionamentos. Se houve acionamento, a exclusão não gera valor a devolver. O valor calculado é apenas uma estimativa até o retorno da análise.";
@@ -47,6 +47,8 @@
   $("irCalculo").onclick = () => {
     const todos = lerVeiculos(), subs = todos.filter(v => v.tp === "SUBSTITUIÇÃO"), vs = todos.filter(v => v.tp !== "SUBSTITUIÇÃO");
     if (!todos.length || todos.some(v => !v.mm || !v.pl || !v.ch)) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos."; return; }
+    const anoOk = a => /^\d{4}$/.test(a) && a >= 1950 && a <= 2100;
+    if (todos.some(v => !anoOk(v.af) || !anoOk(v.am))) { $("erro1").textContent = "Informe o ano de fabricação e o ano do modelo (4 dígitos) de todos os veículos."; return; }
     if (subs.some(v => !v.ps)) { $("erro1").textContent = "Informe a placa do veículo substituído."; return; }
     avisoSub();
     $("erro1").textContent = "";
@@ -146,9 +148,9 @@
       else if (placas.has(pl)) e.push("placa repetida (" + pl + ")");
       if (!/^[A-Z0-9]{17}$/.test(ch)) e.push("chassi deve ter 17 caracteres");
       else if (chassis.has(ch)) e.push("chassi repetido");
-      for (const c of ["FAB","MOD"]) { const v = g(c); if (v && !(/^\d{4}$/.test(v) && v >= 1950 && v <= 2100)) e.push(c + " inválido (" + v + ")"); }
+      for (const c of ["FAB","MOD"]) { const v = g(c); if (!(/^\d{4}$/.test(v) && v >= 1950 && v <= 2100)) e.push(c + (v ? " inválido (" + v + ")" : " obrigatório")); }
       if (e.length) erros.push(`Linha ${n}: ` + e.join("; "));
-      else { placas.add(pl); chassis.add(ch); veiculos.push({ mm: (marca + " " + modelo).trim(), pl, ch }); }
+      else { placas.add(pl); chassis.add(ch); veiculos.push({ mm: (marca + " " + modelo).trim(), pl, ch, af: g("FAB"), am: g("MOD") }); }
     }
     if (!veiculos.length && !erros.length) erros.push("Nenhum veículo encontrado na planilha.");
     return { veiculos, erros };
@@ -216,9 +218,9 @@
     if (enviando || total === null) return;
     enviando = true; $("prosseguir").disabled = true; $("erroEnvio").textContent = "";
     try {
-      const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, contrato: tr._v.np,
+      const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, ano_fab: +tr._v.af, ano_mod: +tr._v.am, contrato: tr._v.np,
         tipo: tr._v.tp, data_endosso: tr.querySelector(".dt").value, valor_inicial: parseFloat(tr.querySelector(".vi").value) }));
-      const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
+      const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, ano_fab: +v.af, ano_mod: +v.am, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
       const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, veiculos: [...calc, ...subs] });
       $("prosseguir").hidden = true; $("termo").disabled = true;
       $("okMsg").hidden = false;

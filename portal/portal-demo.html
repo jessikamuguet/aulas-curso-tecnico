@@ -99,7 +99,7 @@
       <div class="aviso" id="avisoExc" hidden></div>
       <div class="aviso" id="avisoSub" hidden></div>
       <div class="tw"><table>
-        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
+        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Ano fab.</th><th>Ano mod.</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
         <tbody id="veiculos"></tbody>
       </table></div>
       <label class="chkl"><input type="checkbox" id="repContrato"> Usar o mesmo Nº Contrato para todos os veículos (repete o do primeiro da lista)</label>
@@ -287,6 +287,9 @@ const Mock = (() => {
       if (!/^[A-Z0-9]{17}$/.test(chassi)) fail(`Veículo ${n}: chassi deve ter 17 caracteres.`);
       if (!String(v.marca_modelo || "").trim()) fail(`Veículo ${n}: informe marca/modelo.`);
       if (usadas.has(placa)) fail(`Placa repetida na solicitação: ${placa}.`); usadas.add(placa);
+      const af = parseInt(v.ano_fab), am = parseInt(v.ano_mod);
+      if (isNaN(af) || isNaN(am)) fail(`Veículo ${n}: informe o ano de fabricação e o ano do modelo.`);
+      if (af < 1950 || af > 2100 || am < 1950 || am > 2100) fail(`Veículo ${n}: ano de fabricação/modelo inválido.`);
       const ps = placaNorm(v.placa_substituida);
       if (v.tipo === "SUBSTITUIÇÃO" && !ps) fail(`Veículo ${n}: informe a placa do veículo substituído.`);
       let dias = null, vc = null;
@@ -296,7 +299,7 @@ const Mock = (() => {
         try { const r = calcularEndosso({ vigencia: vig, data: parse(v.data_endosso), valorInicial: v.valor_inicial, tipo: v.tipo });
               dias = r.dias; vc = Math.round(r.valor * 100) / 100; } catch (e) { fail(e.message); }
       }
-      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa, chassi, contrato: String(v.contrato || ""), tipo: v.tipo,
+      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa, chassi, ano_fab: af, ano_mod: am, contrato: String(v.contrato || ""), tipo: v.tipo,
         placa_substituida: ps || null, data_endosso: v.data_endosso || null, valor_inicial: v.tipo === "SUBSTITUIÇÃO" ? null : v.valor_inicial,
         dias, valor_calculado: vc, acionamento: false, valor_final: null, confirmado: false });
     });
@@ -399,10 +402,10 @@ const API = (() => {
   // Etapa 1
   function addVeiculo(v = {}) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td>
+    tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="af" inputmode="numeric" maxlength="4" size="5"></td><td><input class="am" inputmode="numeric" maxlength="4" size="5"></td><td><input class="np"></td>
       <td><select class="tp">${opts}</select></td><td><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
     const q = s => tr.querySelector(s);
-    q(".tp").value = v.tp || "INCLUSÃO"; q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || "";
+    q(".tp").value = v.tp || "INCLUSÃO"; q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || ""; q(".af").value = v.af || ""; q(".am").value = v.am || "";
     q(".tp").onchange = e => { q(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; avisoSub(); };
     q(".ps").oninput = avisoSub; q(".pl").oninput = avisoSub;
     q(".x").onclick = () => { tr.remove(); avisoSub(); syncContrato(); };
@@ -424,7 +427,7 @@ const API = (() => {
 
   const lerVeiculos = () => [...$("veiculos").children].map(tr => ({
     mm: tr.querySelector(".mm").value.trim(), pl: tr.querySelector(".pl").value.trim(),
-    ch: tr.querySelector(".ch").value.trim(), np: tr.querySelector(".np").value.trim(),
+    ch: tr.querySelector(".ch").value.trim(), af: tr.querySelector(".af").value.trim(), am: tr.querySelector(".am").value.trim(), np: tr.querySelector(".np").value.trim(),
     tp: tr.querySelector(".tp").value, ps: tr.querySelector(".ps").value.trim() }));
 
   const AVISO_EXC = "Exclusão: a placa passará por avaliação de acionamentos. Se houve acionamento, a exclusão não gera valor a devolver. O valor calculado é apenas uma estimativa até o retorno da análise.";
@@ -442,6 +445,8 @@ const API = (() => {
   $("irCalculo").onclick = () => {
     const todos = lerVeiculos(), subs = todos.filter(v => v.tp === "SUBSTITUIÇÃO"), vs = todos.filter(v => v.tp !== "SUBSTITUIÇÃO");
     if (!todos.length || todos.some(v => !v.mm || !v.pl || !v.ch)) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos."; return; }
+    const anoOk = a => /^\d{4}$/.test(a) && a >= 1950 && a <= 2100;
+    if (todos.some(v => !anoOk(v.af) || !anoOk(v.am))) { $("erro1").textContent = "Informe o ano de fabricação e o ano do modelo (4 dígitos) de todos os veículos."; return; }
     if (subs.some(v => !v.ps)) { $("erro1").textContent = "Informe a placa do veículo substituído."; return; }
     avisoSub();
     $("erro1").textContent = "";
@@ -541,9 +546,9 @@ const API = (() => {
       else if (placas.has(pl)) e.push("placa repetida (" + pl + ")");
       if (!/^[A-Z0-9]{17}$/.test(ch)) e.push("chassi deve ter 17 caracteres");
       else if (chassis.has(ch)) e.push("chassi repetido");
-      for (const c of ["FAB","MOD"]) { const v = g(c); if (v && !(/^\d{4}$/.test(v) && v >= 1950 && v <= 2100)) e.push(c + " inválido (" + v + ")"); }
+      for (const c of ["FAB","MOD"]) { const v = g(c); if (!(/^\d{4}$/.test(v) && v >= 1950 && v <= 2100)) e.push(c + (v ? " inválido (" + v + ")" : " obrigatório")); }
       if (e.length) erros.push(`Linha ${n}: ` + e.join("; "));
-      else { placas.add(pl); chassis.add(ch); veiculos.push({ mm: (marca + " " + modelo).trim(), pl, ch }); }
+      else { placas.add(pl); chassis.add(ch); veiculos.push({ mm: (marca + " " + modelo).trim(), pl, ch, af: g("FAB"), am: g("MOD") }); }
     }
     if (!veiculos.length && !erros.length) erros.push("Nenhum veículo encontrado na planilha.");
     return { veiculos, erros };
@@ -611,9 +616,9 @@ const API = (() => {
     if (enviando || total === null) return;
     enviando = true; $("prosseguir").disabled = true; $("erroEnvio").textContent = "";
     try {
-      const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, contrato: tr._v.np,
+      const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, ano_fab: +tr._v.af, ano_mod: +tr._v.am, contrato: tr._v.np,
         tipo: tr._v.tp, data_endosso: tr.querySelector(".dt").value, valor_inicial: parseFloat(tr.querySelector(".vi").value) }));
-      const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
+      const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, ano_fab: +v.af, ano_mod: +v.am, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
       const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, veiculos: [...calc, ...subs] });
       $("prosseguir").hidden = true; $("termo").disabled = true;
       $("okMsg").hidden = false;
@@ -719,17 +724,21 @@ function desenharAdmin() {
     <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td></tr>`).join("");
 }
 $("filtroStatus").onchange = desenharAdmin;
-$("csv").onclick = () => {
+// Planilha para o administrativo: uma linha por veículo, com os dados do veículo e o valor da pró rata
+const numBR = v => v == null ? "" : v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function baixarPlanilha(sols, arquivo) {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const cab = ["Nº","Usuário","Nome","Data da solicitação","Prazo","Situação","Nº endosso","Devolvida em","Ciência em","Divergência","Anexos","Placa","Tipo","Contrato","Valor calculado","Valor final","Acionamento"];
-  const linhas = [cab];
-  filtradas().forEach(s => s.veiculos.forEach(v => linhas.push([s.id, s.usuario.username, s.usuario.nome, fmtDataHora(s.criado_em), fmtDataHora(s.prazo_em), STATUS_ADMIN[s.status],
-    s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em), s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(), v.placa, v.tipo, v.contrato,
-    v.valor_calculado, v.valor_final, v.acionamento ? "Sim" : "Não"])));
+  const linhas = [["Nº solicitação","Data da solicitação","Usuário","Nome","Placa","Marca/Modelo","Chassi","Ano fabricação","Ano modelo","Tipo","Contrato",
+    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Situação","Prazo","Nº endosso","Devolvida em","Ciência em","Divergência","Anexos"]];
+  sols.forEach(s => s.veiculos.forEach(v => linhas.push([s.id, fmtDataHora(s.criado_em), s.usuario.username, s.usuario.nome, v.placa, v.marca_modelo, v.chassi,
+    v.ano_fab, v.ano_mod, v.tipo, v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "",
+    STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
+    s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(" + ")])));
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob(["﻿" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
-  a.download = "solicitacoes-endossos.csv"; a.click();
-};
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
+  a.download = arquivo; a.click();
+}
+$("csv").onclick = () => baixarPlanilha(filtradas(), "solicitacoes-endossos.csv");
 
 // ---------- admin: usuários
 async function telaUsuarios() {
@@ -749,7 +758,7 @@ $("fUsuario").onsubmit = async e => {
 async function telaDetalhe(id) {
   const { solicitacao: s } = await API.get("/solicitacoes/" + id);
   const admin = USER.role === "admin";
-  const cab = `<div class="topo"><h2>Solicitação nº ${s.id}</h2>${admin ? badgeAdmin(s) + " " + prazoTxt(s) : `<span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span>`}</div>
+  const cab = `<div class="topo"><h2>Solicitação nº ${s.id}</h2>${admin ? badgeAdmin(s) + " " + prazoTxt(s) + ' <button class="btn sec mini" id="baixarSol">Baixar planilha</button>' : `<span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span>`}</div>
     <div class="kv">
       <div><small>Solicitante</small>${esc(s.usuario.nome)}</div>
       <div><small>Data da solicitação</small>${fmtDataHora(s.criado_em)}</div>
@@ -765,6 +774,7 @@ async function telaDetalhe(id) {
   else if (s.status === "devolvida") corpo = formCiente(s);
   else corpo = tabelaFinal(s, true);
   $("detalhe").innerHTML = `<div class="card">${cab}${blocoAnexos(s)}${blocoSp(s)}${corpo}</div>`;
+  if (admin) $("baixarSol").onclick = () => baixarPlanilha([s], `solicitacao-${s.id}.csv`);
   if (admin && s.status === "em_emissao") ligarDevolver(s);
   if (!admin && s.status === "devolvida") ligarCiente(s);
   if ($("reenviarSp")) $("reenviarSp").onclick = async () => {
@@ -791,18 +801,18 @@ function blocoSp(s) {
 }
 const tipoTag = v => v.tipo[0] + v.tipo.slice(1).toLowerCase();
 function tabelaSolicitada(s) {
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
-    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}</td><td>${esc(v.chassi)}</td><td>${esc(v.contrato)}</td><td>${tipoTag(v)}</td><td>${esc(v.placa_substituida || "-")}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Ano fab./mod.</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
+    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}</td><td>${esc(v.chassi)}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${esc(v.contrato)}</td><td>${tipoTag(v)}</td><td>${esc(v.placa_substituida || "-")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function valorTxt(v) {
   if (v.tipo === "EXCLUSÃO" && v.acionamento) return `${brl(0)} <span class="tag bad">Acionamento: sem restituição</span>`;
   return brl(v.valor_final);
 }
 function tabelaFinal(s, obs) {
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor</th>${s.status === "ciente" ? "<th>Confere</th>" : ""}</tr></thead><tbody>${
-    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td>
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Tipo</th><th>Contrato</th><th>Valor</th>${s.status === "ciente" ? "<th>Confere</th>" : ""}</tr></thead><tbody>${
+    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td>
       <td class="n">${valorTxt(v)}</td>${s.status === "ciente" ? `<td>${v.confirmado ? "Sim" : "<b>Não</b>"}</td>` : ""}</tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="4" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td>${s.status === "ciente" ? "<td></td>" : ""}</tr></tfoot></table></div>
+    <tfoot><tr><td colspan="5" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td>${s.status === "ciente" ? "<td></td>" : ""}</tr></tfoot></table></div>
     ${obs && s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}
     ${s.divergencia ? `<div class="aviso"><b>Divergência comunicada pelo cliente:</b><br>${esc(s.divergencia)}</div>` : ""}
     ${s.status === "ciente" && !s.divergencia ? `<div class="ok">O cliente declarou ter recebido e estar de acordo com as informações.</div>` : ""}`;
@@ -813,12 +823,12 @@ function formDevolver(s) {
   const linhas = s.veiculos.map(v => {
     const exc = v.tipo === "EXCLUSÃO", sub = v.tipo === "SUBSTITUIÇÃO";
     return `<tr data-vid="${v.id}" data-tipo="${v.tipo}"><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${sub ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td>
-      <td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${sub ? "-" : brl(v.valor_calculado)}</td>
+      <td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${sub ? "-" : brl(v.valor_calculado)}</td>
       <td>${exc ? '<label class="chkl" style="margin:0"><input type="checkbox" class="ac"> Teve acionamento</label>' : "-"}</td>
       <td><input class="vf" type="number" step="0.01" style="min-width:120px" value="${v.valor_calculado ?? ""}" ${sub ? 'placeholder="informar"' : ""}></td></tr>`;
   }).join("");
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
-    <tbody>${linhas}</tbody><tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
+    <tbody>${linhas}</tbody><tfoot><tr><td colspan="7" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
     <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa.</div>
     <div class="grid">
       <div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div>

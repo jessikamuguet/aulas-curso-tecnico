@@ -36,6 +36,9 @@ const Mock = (() => {
       if (!/^[A-Z0-9]{17}$/.test(chassi)) fail(`Veículo ${n}: chassi deve ter 17 caracteres.`);
       if (!String(v.marca_modelo || "").trim()) fail(`Veículo ${n}: informe marca/modelo.`);
       if (usadas.has(placa)) fail(`Placa repetida na solicitação: ${placa}.`); usadas.add(placa);
+      const af = parseInt(v.ano_fab), am = parseInt(v.ano_mod);
+      if (isNaN(af) || isNaN(am)) fail(`Veículo ${n}: informe o ano de fabricação e o ano do modelo.`);
+      if (af < 1950 || af > 2100 || am < 1950 || am > 2100) fail(`Veículo ${n}: ano de fabricação/modelo inválido.`);
       const ps = placaNorm(v.placa_substituida);
       if (v.tipo === "SUBSTITUIÇÃO" && !ps) fail(`Veículo ${n}: informe a placa do veículo substituído.`);
       let dias = null, vc = null;
@@ -45,7 +48,7 @@ const Mock = (() => {
         try { const r = calcularEndosso({ vigencia: vig, data: parse(v.data_endosso), valorInicial: v.valor_inicial, tipo: v.tipo });
               dias = r.dias; vc = Math.round(r.valor * 100) / 100; } catch (e) { fail(e.message); }
       }
-      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa, chassi, contrato: String(v.contrato || ""), tipo: v.tipo,
+      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa, chassi, ano_fab: af, ano_mod: am, contrato: String(v.contrato || ""), tipo: v.tipo,
         placa_substituida: ps || null, data_endosso: v.data_endosso || null, valor_inicial: v.tipo === "SUBSTITUIÇÃO" ? null : v.valor_inicial,
         dias, valor_calculado: vc, acionamento: false, valor_final: null, confirmado: false });
     });

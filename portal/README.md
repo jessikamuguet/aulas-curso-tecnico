@@ -35,6 +35,14 @@ Para regerar depois de mudar algo em `static/`: `python build_demo.py`.
 5. Devolvida, o cliente confere veículo a veículo, pode **comunicar divergência** (veículo que saiu/faltou) e dá a
    **ciência** ("recebi, visualizei e estou de acordo com o que foi calculado"). O admin vê a ciência e a divergência.
 
+## Planilha para o administrativo
+
+Em *Solicitações* (**Exportar CSV**, todas as filtradas) e na página de cada solicitação (**Baixar planilha**) sai um CSV com
+uma linha por veículo: Nº da solicitação, data, usuário, **placa, marca/modelo, chassi, ano de fabricação, ano do modelo**, tipo,
+contrato, **valor pró rata (calculado)**, valor final (devolvido), acionamento, situação, prazo, nº do endosso, datas,
+divergência e anexos. Separador `;`, valores com vírgula (abre direto no Excel em português). O ano de fabricação e o ano do
+modelo são obrigatórios no cadastro e na importação.
+
 ## Regras
 
 - **Cálculo:** custo dia = valor inicial ÷ 365; saldo = valor inicial − custo dia × dias (dias = data do endosso − vigência).
