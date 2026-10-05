@@ -5,33 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Portal Pro Rata</title>
 <style>
-  /* Tokens de marca: ajustar aqui quando o layout do helppi.me estiver disponível */
-  :root { --brand:#2f5bea; --bg:#f4f6fb; --card:#fff; --text:#1d2433; --muted:#6b7385; --line:#8884; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#12151d; --card:#1c212d; --text:#e8ebf3; --muted:#9aa3b8; } }
+  /* Cores extraídas do logo helppi.me */
+  :root { --brand:#f87101; --accent:#7c3aed; --bg:#000; --card:#111114; --text:#fff; --muted:#a1a1aa; --line:#ffffff2a; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f5f5f7; --card:#fff; --text:#18181b; --muted:#6b6b76; --line:#0002; } }
   * { box-sizing:border-box; }
   body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
-  header { background:var(--brand); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
-  header img { height:32px; } header img[src=""] { display:none; }
-  header b { font-size:1.1rem; flex:1; }
+  header { background:#000; border-bottom:2px solid var(--brand); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
+  header img { height:40px; } header img[src=""] { display:none; }
+  header b { font-size:1rem; flex:1; color:var(--muted); font-weight:500; }
   header button { background:#fff3; color:#fff; border:0; padding:6px 12px; border-radius:6px; cursor:pointer; }
   main { padding:16px; max-width:1100px; margin:0 auto; }
   .card { background:var(--card); padding:20px; border-radius:12px; box-shadow:0 2px 12px #0001; margin-bottom:16px; }
   .login { max-width:380px; margin:40px auto; }
   h1,h2 { margin:0 0 12px; font-size:1.2rem; }
   label { display:block; margin:10px 0 4px; font-size:.85rem; color:var(--muted); }
+  input:focus,select:focus { outline:2px solid var(--accent); }
+  select option { color:#000; }
   input,select { padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; width:100%; }
-  .btn { padding:9px 16px; border:0; border-radius:6px; background:var(--brand); color:#fff; font:inherit; cursor:pointer; margin-top:14px; }
+  .btn { padding:9px 16px; border:0; border-radius:8px; background:var(--brand); color:#000; font-weight:600; font:inherit; cursor:pointer; margin-top:14px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
   .tw { overflow-x:auto; } table { border-collapse:collapse; width:100%; font-size:.9rem; }
   th,td { padding:6px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
-  td input,td select { min-width:90px; } td.n { text-align:right; }
-  tfoot td { font-weight:700; } .erro { color:#d33; margin-top:8px; }
+  td input { min-width:90px; } td select { min-width:120px; } td.n { text-align:right; }
+  tfoot td { font-weight:700; color:var(--brand); } .erro { color:#d33; margin-top:8px; }
   [hidden] { display:none !important; }
 </style>
 </head>
 <body>
 <header>
-  <img id="logo" src="" alt="Logo"> <!-- colocar o logo aqui -->
+  <img id="logo" src="logo.webp" alt="helppi.me">
   <b>Portal Pro Rata</b>
   <button id="sair" hidden>Sair</button>
 </header>
