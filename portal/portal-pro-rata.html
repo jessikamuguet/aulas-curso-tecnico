@@ -68,8 +68,10 @@
       <div class="imp">
         <label for="arq" style="margin:0">Importar planilha (.xlsx ou .csv)</label>
         <input id="arq" type="file" accept=".xlsx,.csv">
+        <label for="tipoImp" style="margin:0">Tipo de endosso dos veículos importados</label>
+        <select id="tipoImp" style="width:auto"><option>INCLUSÃO</option><option>EXCLUSÃO</option></select>
         <button type="button" class="btn sec mini" id="modelo">Baixar modelo (CSV)</button>
-        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB e MOD (ou Ano fab/Ano mod, ou Ano fabricação/Ano modelo, em colunas separadas), PLACA, CHASSI. Os veículos importados entram como inclusão.</small>
+        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB e MOD (ou Ano fab/Ano mod, ou Ano fabricação/Ano modelo, em colunas separadas), PLACA, CHASSI.</small>
         <div class="erro" id="erroImp" style="flex-basis:100%"></div>
         <ul class="lista-erros" id="listaErros" hidden></ul>
       </div>
@@ -100,7 +102,7 @@
       <div class="card" id="termoBox" hidden>
         <button type="button" class="termo" id="termo" aria-pressed="false">
           <span class="chk"></span>
-          <span>Estou de acordo com as informações aqui prestadas e solicito a inclusão dos veículos aqui informados</span>
+          <span>Estou de acordo com as informações aqui prestadas e solicito a <span id="termoTipo">inclusão</span> dos veículos aqui informados</span>
         </button>
         <button class="btn" id="prosseguir" hidden>Prosseguir com endosso</button>
         <div class="ok" id="okMsg" hidden></div>
@@ -170,7 +172,7 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td>
       <td><select class="tp">${opts}</select></td><td><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
     const q = s => tr.querySelector(s);
-    q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || "";
+    q(".tp").value = v.tp || "INCLUSÃO"; q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || "";
     q(".tp").onchange = e => { q(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; avisoSub(); };
     q(".ps").oninput = avisoSub; q(".pl").oninput = avisoSub;
     q(".x").onclick = () => { tr.remove(); avisoSub(); };
@@ -211,6 +213,8 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     });
     $("avisoSub2").hidden = !subs.length;
     $("avisoSub2").innerHTML = subs.length ? `Em análise interna (fora do cálculo): ${subs.map(v => esc(v.pl)).join(", ")}.` : "";
+    const ts = new Set(vs.map(v => v.tp));
+    $("termoTipo").textContent = ts.size > 1 ? "inclusão e exclusão" : ts.has("EXCLUSÃO") ? "exclusão" : "inclusão";
     resetTermo(); recalcular(); etapa(2);
   };
   $("voltar").onclick = () => etapa(1);
@@ -311,8 +315,8 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
       } else {
         const vazio = lerVeiculos().length === 1 && !lerVeiculos()[0].mm && !lerVeiculos()[0].pl && !lerVeiculos()[0].ch;
         if (vazio) $("veiculos").innerHTML = "";
-        veiculos.forEach(addVeiculo); avisoSub();
-        $("erroImp").style.color = "inherit"; $("erroImp").textContent = `${veiculos.length} veículo(s) importado(s) com sucesso.`;
+        veiculos.forEach(v => addVeiculo({ ...v, tp: $("tipoImp").value })); avisoSub();
+        $("erroImp").style.color = "inherit"; $("erroImp").textContent = `${veiculos.length} veículo(s) importado(s) como ${$("tipoImp").value.toLowerCase()}.`;
       }
     } catch (err) { $("erroImp").textContent = "Não foi possível ler a planilha: " + err.message; }
     e.target.value = "";
