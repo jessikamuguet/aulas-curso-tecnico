@@ -95,6 +95,7 @@
         <h2>2. Cálculo</h2>
         <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
         <label class="chkl" id="mesmaCatBox" hidden><input type="checkbox" id="mesmaCat"> Todos os veículos são da mesma categoria? Marque para repetir o valor inicial do primeiro veículo em todos</label>
+        <label class="chkl" id="mesmaDataBox" hidden><input type="checkbox" id="mesmaData"> Usar a mesma data do endosso para todos os veículos (repete a data do primeiro)</label>
         <div class="tw"><table>
           <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Dias</th><th>Valor</th></tr></thead>
           <tbody id="linhas"></tbody>
@@ -183,7 +184,7 @@
     avisoSub();
     if (!vs.length) { $("erro1").textContent = "Não há veículos para calcular agora: as substituições seguem para análise interna da placa."; return; }
     $("erro1").textContent = "";
-    $("linhas").innerHTML = ""; $("mesmaCat").checked = false;
+    $("linhas").innerHTML = ""; $("mesmaCat").checked = false; $("mesmaData").checked = false;
     vs.forEach(v => {
       const tr = document.createElement("tr"); tr.dataset.tp = v.tp;
       tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}</small></td><td>${v.tp}</td>
@@ -195,7 +196,7 @@
     $("avisoSub2").innerHTML = subs.length ? `Em análise interna (fora do cálculo): ${subs.map(v => esc(v.pl)).join(", ")}.` : "";
     const ts = new Set(vs.map(v => v.tp));
     $("termoTipo").textContent = ts.size > 1 ? "inclusão e exclusão" : ts.has("EXCLUSÃO") ? "exclusão" : "inclusão";
-    $("mesmaCatBox").hidden = vs.length < 2;
+    $("mesmaCatBox").hidden = $("mesmaDataBox").hidden = vs.length < 2;
     resetTermo(); recalcular(); etapa(2);
   };
   $("voltar").onclick = () => etapa(1);
@@ -325,15 +326,16 @@
   }
   // Mesma categoria: repete o valor inicial do primeiro veículo nos demais
   function syncValor() {
-    const rows = [...$("linhas").children], on = $("mesmaCat").checked;
-    rows.forEach((tr, i) => {
-      const vi = tr.querySelector(".vi");
+    const rows = [...$("linhas").children];
+    const rep = (cls, on) => rows.forEach((tr, i) => {
+      const el = tr.querySelector(cls);
       if (i === 0) return;
-      vi.disabled = on; if (on) vi.value = rows[0].querySelector(".vi").value;
+      el.disabled = on; if (on) el.value = rows[0].querySelector(cls).value;
     });
+    rep(".vi", $("mesmaCat").checked); rep(".dt", $("mesmaData").checked);
   }
   $("etapa2").addEventListener("input", () => { syncValor(); recalcular(); });
-  $("mesmaCat").onchange = () => { syncValor(); recalcular(); };
+  $("mesmaCat").onchange = $("mesmaData").onchange = () => { syncValor(); recalcular(); };
 
   // Termo e prosseguir
   function resetTermo() { $("termo").setAttribute("aria-pressed","false"); $("prosseguir").hidden = true; $("okMsg").hidden = true; }
