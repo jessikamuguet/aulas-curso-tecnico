@@ -16,7 +16,8 @@ const Mock = (() => {
   const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401); if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
   const soma = (vs, k) => Math.round(vs.reduce((a, v) => a + (v[k] || 0), 0) * 100) / 100;
   const ser = s => { const u = st.users.find(x => x.id === s.user_id);
-    return { ...JSON.parse(JSON.stringify(s)), usuario: { id: u.id, nome: u.nome, username: u.username },
+    const { anexos, ...resto } = JSON.parse(JSON.stringify(s));
+    return { ...resto, anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
              total_calculado: soma(s.veiculos, "valor_calculado"), total_final: soma(s.veiculos, "valor_final") }; };
   const achar = id => st.sols.find(s => s.id === +id) || fail("Solicitação não encontrada.", 404);
   const placaNorm = p => String(p || "").toUpperCase().replace(/[- ]/g, "");
@@ -68,6 +69,21 @@ const Mock = (() => {
     Object.assign(s, { status: "devolvida", numero_endosso: String(d.numero_endosso).trim(), observacao: String(d.observacao || "").trim(), devolvida_em: new Date().toISOString() });
     save(); return { solicitacao: ser(s) };
   }
+  const lerArq = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error("Não foi possível ler o arquivo.")); r.readAsDataURL(f); });
+  async function devolverForm(form, id) {
+    exige(true); achar(id);
+    const anexos = {};
+    for (const [tipo, rot] of [["endosso", "endosso"], ["boleto", "boleto"]]) {
+      const f = form.files[tipo];
+      if (!f) { if (tipo === "endosso") fail("Anexe o PDF do endosso."); continue; }
+      if (f.size > 10 * 1024 * 1024) fail(`O PDF do ${rot} passa de 10 MB.`);
+      const data = await lerArq(f);
+      if (!data.includes("base64,JVBERi0")) fail(`O arquivo do ${rot} não é um PDF válido.`); // "%PDF-"
+      anexos[tipo] = { nome: f.name.replace(/[^\w .()\-]/g, "_").slice(0, 120), tamanho: f.size, data };
+    }
+    const r = devolver(form.dados, id);
+    achar(id).anexos = anexos; save(); return { solicitacao: ser(achar(id)) };
+  }
   function ciente(u, d, id) {
     const s = achar(id); if (s.user_id !== u.id) fail("Solicitação não encontrada.", 404);
     if (s.status !== "devolvida") fail("Esta solicitação não está aguardando ciência.", 409);
@@ -78,7 +94,7 @@ const Mock = (() => {
     Object.assign(s, { status: "ciente", ciente_em: new Date().toISOString(), divergencia: dv || null }); save(); return { solicitacao: ser(s) };
   }
 
-  return { handle(method, path, d = {}) {
+  return { anexoUrl: (id, tipo) => (achar(id).anexos?.[tipo]?.data) || "#", handle(method, path, d = {}) {
     let m;
     if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password);
       if (!u) fail("Usuário ou senha inválidos.", 401); st.uid = u.id; save(); return { user: pub(u) }; }
@@ -95,7 +111,7 @@ const Mock = (() => {
     if (path === "/solicitacoes") return criar(exige(), d);
     if ((m = path.match(/^\/solicitacoes\/(\d+)$/))) { const u = exige(), s = achar(m[1]);
       if (u.role !== "admin" && s.user_id !== u.id) fail("Solicitação não encontrada.", 404); return { solicitacao: ser(s) }; }
-    if ((m = path.match(/^\/solicitacoes\/(\d+)\/devolver$/))) return devolver(d, m[1]);
+    if ((m = path.match(/^\/solicitacoes\/(\d+)\/devolver$/))) return d.__form ? devolverForm(d, m[1]) : devolver(d, m[1]);
     if ((m = path.match(/^\/solicitacoes\/(\d+)\/ciente$/))) return ciente(exige(), d, m[1]);
     fail("Rota não encontrada.", 404);
   } };

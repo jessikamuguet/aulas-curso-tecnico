@@ -9,5 +9,16 @@ const API = (() => {
     if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; throw e; }
     return data;
   }
-  return { demo, get: p => call("GET", p), post: (p, b) => call("POST", p, b || {}) };
+  // Envio com arquivos (multipart): dados em JSON + { campo: File }
+  async function postForm(path, dados, files) {
+    if (demo) return Mock.handle("POST", path, { __form: true, dados, files });
+    const fd = new FormData(); fd.append("dados", JSON.stringify(dados));
+    Object.entries(files).forEach(([k, f]) => { if (f) fd.append(k, f); });
+    const r = await fetch("/api" + path, { method: "POST", credentials: "same-origin", body: fd });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; throw e; }
+    return data;
+  }
+  const urlAnexo = (sid, tipo) => demo ? Mock.anexoUrl(sid, tipo) : `/api/solicitacoes/${sid}/anexos/${tipo}`;
+  return { demo, get: p => call("GET", p), post: (p, b) => call("POST", p, b || {}), postForm, urlAnexo };
 })();

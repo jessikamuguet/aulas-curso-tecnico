@@ -55,6 +55,9 @@
   .kv small { display:block; color:var(--muted); }
   .demo { margin:12px 16px 0; padding:8px 12px; border:1px dashed var(--accent); border-radius:8px; font-size:.85rem; color:var(--muted); }
   .topo { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; } .topo h2 { margin:0; flex:1; }
+  .docs { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 14px; padding:12px; border:1px solid var(--accent); border-radius:10px; }
+  .doc { color:#fff; background:var(--accent); padding:7px 14px; border-radius:8px; text-decoration:none; font-size:.9rem; }
+  .doc:hover { filter:brightness(1.15); }
 </style>
 </head>
 <body>
@@ -262,7 +265,8 @@ const Mock = (() => {
   const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401); if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
   const soma = (vs, k) => Math.round(vs.reduce((a, v) => a + (v[k] || 0), 0) * 100) / 100;
   const ser = s => { const u = st.users.find(x => x.id === s.user_id);
-    return { ...JSON.parse(JSON.stringify(s)), usuario: { id: u.id, nome: u.nome, username: u.username },
+    const { anexos, ...resto } = JSON.parse(JSON.stringify(s));
+    return { ...resto, anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
              total_calculado: soma(s.veiculos, "valor_calculado"), total_final: soma(s.veiculos, "valor_final") }; };
   const achar = id => st.sols.find(s => s.id === +id) || fail("Solicitação não encontrada.", 404);
   const placaNorm = p => String(p || "").toUpperCase().replace(/[- ]/g, "");
@@ -314,6 +318,21 @@ const Mock = (() => {
     Object.assign(s, { status: "devolvida", numero_endosso: String(d.numero_endosso).trim(), observacao: String(d.observacao || "").trim(), devolvida_em: new Date().toISOString() });
     save(); return { solicitacao: ser(s) };
   }
+  const lerArq = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error("Não foi possível ler o arquivo.")); r.readAsDataURL(f); });
+  async function devolverForm(form, id) {
+    exige(true); achar(id);
+    const anexos = {};
+    for (const [tipo, rot] of [["endosso", "endosso"], ["boleto", "boleto"]]) {
+      const f = form.files[tipo];
+      if (!f) { if (tipo === "endosso") fail("Anexe o PDF do endosso."); continue; }
+      if (f.size > 10 * 1024 * 1024) fail(`O PDF do ${rot} passa de 10 MB.`);
+      const data = await lerArq(f);
+      if (!data.includes("base64,JVBERi0")) fail(`O arquivo do ${rot} não é um PDF válido.`); // "%PDF-"
+      anexos[tipo] = { nome: f.name.replace(/[^\w .()\-]/g, "_").slice(0, 120), tamanho: f.size, data };
+    }
+    const r = devolver(form.dados, id);
+    achar(id).anexos = anexos; save(); return { solicitacao: ser(achar(id)) };
+  }
   function ciente(u, d, id) {
     const s = achar(id); if (s.user_id !== u.id) fail("Solicitação não encontrada.", 404);
     if (s.status !== "devolvida") fail("Esta solicitação não está aguardando ciência.", 409);
@@ -324,7 +343,7 @@ const Mock = (() => {
     Object.assign(s, { status: "ciente", ciente_em: new Date().toISOString(), divergencia: dv || null }); save(); return { solicitacao: ser(s) };
   }
 
-  return { handle(method, path, d = {}) {
+  return { anexoUrl: (id, tipo) => (achar(id).anexos?.[tipo]?.data) || "#", handle(method, path, d = {}) {
     let m;
     if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password);
       if (!u) fail("Usuário ou senha inválidos.", 401); st.uid = u.id; save(); return { user: pub(u) }; }
@@ -341,7 +360,7 @@ const Mock = (() => {
     if (path === "/solicitacoes") return criar(exige(), d);
     if ((m = path.match(/^\/solicitacoes\/(\d+)$/))) { const u = exige(), s = achar(m[1]);
       if (u.role !== "admin" && s.user_id !== u.id) fail("Solicitação não encontrada.", 404); return { solicitacao: ser(s) }; }
-    if ((m = path.match(/^\/solicitacoes\/(\d+)\/devolver$/))) return devolver(d, m[1]);
+    if ((m = path.match(/^\/solicitacoes\/(\d+)\/devolver$/))) return d.__form ? devolverForm(d, m[1]) : devolver(d, m[1]);
     if ((m = path.match(/^\/solicitacoes\/(\d+)\/ciente$/))) return ciente(exige(), d, m[1]);
     fail("Rota não encontrada.", 404);
   } };
@@ -358,7 +377,18 @@ const API = (() => {
     if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; throw e; }
     return data;
   }
-  return { demo, get: p => call("GET", p), post: (p, b) => call("POST", p, b || {}) };
+  // Envio com arquivos (multipart): dados em JSON + { campo: File }
+  async function postForm(path, dados, files) {
+    if (demo) return Mock.handle("POST", path, { __form: true, dados, files });
+    const fd = new FormData(); fd.append("dados", JSON.stringify(dados));
+    Object.entries(files).forEach(([k, f]) => { if (f) fd.append(k, f); });
+    const r = await fetch("/api" + path, { method: "POST", credentials: "same-origin", body: fd });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; throw e; }
+    return data;
+  }
+  const urlAnexo = (sid, tipo) => demo ? Mock.anexoUrl(sid, tipo) : `/api/solicitacoes/${sid}/anexos/${tipo}`;
+  return { demo, get: p => call("GET", p), post: (p, b) => call("POST", p, b || {}), postForm, urlAnexo };
 })();
 </script>
 <script>  const TIPOS = ["INCLUSÃO","EXCLUSÃO","SUBSTITUIÇÃO"];
@@ -687,10 +717,10 @@ function desenharAdmin() {
 $("filtroStatus").onchange = desenharAdmin;
 $("csv").onclick = () => {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const cab = ["Nº","Usuário","Nome","Data da solicitação","Prazo","Situação","Nº endosso","Devolvida em","Ciência em","Divergência","Placa","Tipo","Contrato","Valor calculado","Valor final","Acionamento"];
+  const cab = ["Nº","Usuário","Nome","Data da solicitação","Prazo","Situação","Nº endosso","Devolvida em","Ciência em","Divergência","Anexos","Placa","Tipo","Contrato","Valor calculado","Valor final","Acionamento"];
   const linhas = [cab];
   filtradas().forEach(s => s.veiculos.forEach(v => linhas.push([s.id, s.usuario.username, s.usuario.nome, fmtDataHora(s.criado_em), fmtDataHora(s.prazo_em), STATUS_ADMIN[s.status],
-    s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em), s.divergencia, v.placa, v.tipo, v.contrato,
+    s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em), s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(), v.placa, v.tipo, v.contrato,
     v.valor_calculado, v.valor_final, v.acionamento ? "Sim" : "Não"])));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["﻿" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
@@ -730,12 +760,17 @@ async function telaDetalhe(id) {
   else if (s.status === "em_emissao") corpo = `<div class="aviso"><b>Solicitação em processo de emissão.</b></div>${tabelaSolicitada(s)}`;
   else if (s.status === "devolvida") corpo = formCiente(s);
   else corpo = tabelaFinal(s, true);
-  $("detalhe").innerHTML = `<div class="card">${cab}${corpo}</div>`;
+  $("detalhe").innerHTML = `<div class="card">${cab}${blocoAnexos(s)}${corpo}</div>`;
   if (admin && s.status === "em_emissao") ligarDevolver(s);
   if (!admin && s.status === "devolvida") ligarCiente(s);
   show("vDetalhe");
 }
 
+const NOME_ANEXO = { endosso: "Endosso", boleto: "Boleto" };
+function blocoAnexos(s) {
+  if (!s.anexos || !s.anexos.length) return "";
+  return `<div class="docs"><b>Documentos</b>${s.anexos.map(a => `<a class="doc" href="${API.urlAnexo(s.id, a.tipo)}" target="_blank" rel="noopener"${API.demo ? ` download="${esc(a.nome)}"` : ""}>${NOME_ANEXO[a.tipo]} (PDF)</a>`).join("")}</div>`;
+}
 const tipoTag = v => v.tipo[0] + v.tipo.slice(1).toLowerCase();
 function tabelaSolicitada(s) {
   return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
@@ -767,7 +802,11 @@ function formDevolver(s) {
   return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
     <tbody>${linhas}</tbody><tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
     <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa.</div>
-    <div class="grid"><div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div></div>
+    <div class="grid">
+      <div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div>
+      <div><label for="fEndosso">Endosso (PDF, obrigatório)</label><input id="fEndosso" type="file" accept="application/pdf,.pdf"></div>
+      <div><label for="fBoleto">Boleto (PDF, se houver)</label><input id="fBoleto" type="file" accept="application/pdf,.pdf"></div>
+    </div>
     <label for="obs">Observação para o cliente (opcional)</label><textarea id="obs"></textarea>
     <button class="btn" id="devolver">Devolver endosso ao cliente</button><div class="erro" id="erroDev"></div>`;
 }
@@ -783,10 +822,17 @@ function ligarDevolver(s) {
   $("devolver").onclick = async () => {
     $("erroDev").textContent = "";
     try {
-      await API.post(`/solicitacoes/${s.id}/devolver`, { numero_endosso: $("nEnd").value, observacao: $("obs").value,
-        veiculos: trs().map(tr => ({ id: +tr.dataset.vid, acionamento: !!tr.querySelector(".ac")?.checked, valor_final: tr.querySelector(".vf").value })) });
+      const files = { endosso: $("fEndosso").files[0], boleto: $("fBoleto").files[0] };
+      if (!files.endosso) throw new Error("Anexe o PDF do endosso.");
+      for (const [k, f] of Object.entries(files)) {
+        if (f && !/\.pdf$/i.test(f.name)) throw new Error(`O arquivo do ${k} precisa ser PDF.`);
+        if (f && f.size > 10 * 1024 * 1024) throw new Error(`O PDF do ${k} passa de 10 MB.`);
+      }
+      $("devolver").disabled = true;
+      await API.postForm(`/solicitacoes/${s.id}/devolver`, { numero_endosso: $("nEnd").value, observacao: $("obs").value,
+        veiculos: trs().map(tr => ({ id: +tr.dataset.vid, acionamento: !!tr.querySelector(".ac")?.checked, valor_final: tr.querySelector(".vf").value })) }, files);
       await telaDetalhe(s.id);
-    } catch (e) { $("erroDev").textContent = e.message; }
+    } catch (e) { $("erroDev").textContent = e.message; $("devolver").disabled = false; }
   };
 }
 
@@ -795,7 +841,7 @@ function formCiente(s) {
   const linhas = s.veiculos.map(v => `<tr><td><input type="checkbox" class="cf" value="${v.id}" checked></td><td>${esc(v.marca_modelo)}</td>
     <td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${valorTxt(v)}</td></tr>`).join("");
   const sens = s.veiculos.some(v => v.tipo !== "INCLUSÃO");
-  return `<div class="aviso"><b>Seu endosso foi emitido.</b> Confira as informações abaixo${sens ? ", principalmente os veículos de exclusão e substituição" : ""}.</div>
+  return `<div class="aviso"><b>Seu endosso foi emitido.</b> Baixe o endosso (e o boleto, se houver) em "Documentos" e confira as informações abaixo${sens ? ", principalmente os veículos de exclusão e substituição" : ""}.</div>
     <div class="tw"><table><thead><tr><th>Confere</th><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor</th></tr></thead><tbody>${linhas}</tbody>
     <tfoot><tr><td colspan="5" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td></tr></tfoot></table></div>
     ${s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}

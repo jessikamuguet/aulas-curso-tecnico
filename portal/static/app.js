@@ -85,10 +85,10 @@ function desenharAdmin() {
 $("filtroStatus").onchange = desenharAdmin;
 $("csv").onclick = () => {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const cab = ["Nº","Usuário","Nome","Data da solicitação","Prazo","Situação","Nº endosso","Devolvida em","Ciência em","Divergência","Placa","Tipo","Contrato","Valor calculado","Valor final","Acionamento"];
+  const cab = ["Nº","Usuário","Nome","Data da solicitação","Prazo","Situação","Nº endosso","Devolvida em","Ciência em","Divergência","Anexos","Placa","Tipo","Contrato","Valor calculado","Valor final","Acionamento"];
   const linhas = [cab];
   filtradas().forEach(s => s.veiculos.forEach(v => linhas.push([s.id, s.usuario.username, s.usuario.nome, fmtDataHora(s.criado_em), fmtDataHora(s.prazo_em), STATUS_ADMIN[s.status],
-    s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em), s.divergencia, v.placa, v.tipo, v.contrato,
+    s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em), s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(), v.placa, v.tipo, v.contrato,
     v.valor_calculado, v.valor_final, v.acionamento ? "Sim" : "Não"])));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["﻿" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
@@ -128,12 +128,17 @@ async function telaDetalhe(id) {
   else if (s.status === "em_emissao") corpo = `<div class="aviso"><b>Solicitação em processo de emissão.</b></div>${tabelaSolicitada(s)}`;
   else if (s.status === "devolvida") corpo = formCiente(s);
   else corpo = tabelaFinal(s, true);
-  $("detalhe").innerHTML = `<div class="card">${cab}${corpo}</div>`;
+  $("detalhe").innerHTML = `<div class="card">${cab}${blocoAnexos(s)}${corpo}</div>`;
   if (admin && s.status === "em_emissao") ligarDevolver(s);
   if (!admin && s.status === "devolvida") ligarCiente(s);
   show("vDetalhe");
 }
 
+const NOME_ANEXO = { endosso: "Endosso", boleto: "Boleto" };
+function blocoAnexos(s) {
+  if (!s.anexos || !s.anexos.length) return "";
+  return `<div class="docs"><b>Documentos</b>${s.anexos.map(a => `<a class="doc" href="${API.urlAnexo(s.id, a.tipo)}" target="_blank" rel="noopener"${API.demo ? ` download="${esc(a.nome)}"` : ""}>${NOME_ANEXO[a.tipo]} (PDF)</a>`).join("")}</div>`;
+}
 const tipoTag = v => v.tipo[0] + v.tipo.slice(1).toLowerCase();
 function tabelaSolicitada(s) {
   return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
@@ -165,7 +170,11 @@ function formDevolver(s) {
   return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
     <tbody>${linhas}</tbody><tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
     <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa.</div>
-    <div class="grid"><div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div></div>
+    <div class="grid">
+      <div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div>
+      <div><label for="fEndosso">Endosso (PDF, obrigatório)</label><input id="fEndosso" type="file" accept="application/pdf,.pdf"></div>
+      <div><label for="fBoleto">Boleto (PDF, se houver)</label><input id="fBoleto" type="file" accept="application/pdf,.pdf"></div>
+    </div>
     <label for="obs">Observação para o cliente (opcional)</label><textarea id="obs"></textarea>
     <button class="btn" id="devolver">Devolver endosso ao cliente</button><div class="erro" id="erroDev"></div>`;
 }
@@ -181,10 +190,17 @@ function ligarDevolver(s) {
   $("devolver").onclick = async () => {
     $("erroDev").textContent = "";
     try {
-      await API.post(`/solicitacoes/${s.id}/devolver`, { numero_endosso: $("nEnd").value, observacao: $("obs").value,
-        veiculos: trs().map(tr => ({ id: +tr.dataset.vid, acionamento: !!tr.querySelector(".ac")?.checked, valor_final: tr.querySelector(".vf").value })) });
+      const files = { endosso: $("fEndosso").files[0], boleto: $("fBoleto").files[0] };
+      if (!files.endosso) throw new Error("Anexe o PDF do endosso.");
+      for (const [k, f] of Object.entries(files)) {
+        if (f && !/\.pdf$/i.test(f.name)) throw new Error(`O arquivo do ${k} precisa ser PDF.`);
+        if (f && f.size > 10 * 1024 * 1024) throw new Error(`O PDF do ${k} passa de 10 MB.`);
+      }
+      $("devolver").disabled = true;
+      await API.postForm(`/solicitacoes/${s.id}/devolver`, { numero_endosso: $("nEnd").value, observacao: $("obs").value,
+        veiculos: trs().map(tr => ({ id: +tr.dataset.vid, acionamento: !!tr.querySelector(".ac")?.checked, valor_final: tr.querySelector(".vf").value })) }, files);
       await telaDetalhe(s.id);
-    } catch (e) { $("erroDev").textContent = e.message; }
+    } catch (e) { $("erroDev").textContent = e.message; $("devolver").disabled = false; }
   };
 }
 
@@ -193,7 +209,7 @@ function formCiente(s) {
   const linhas = s.veiculos.map(v => `<tr><td><input type="checkbox" class="cf" value="${v.id}" checked></td><td>${esc(v.marca_modelo)}</td>
     <td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${valorTxt(v)}</td></tr>`).join("");
   const sens = s.veiculos.some(v => v.tipo !== "INCLUSÃO");
-  return `<div class="aviso"><b>Seu endosso foi emitido.</b> Confira as informações abaixo${sens ? ", principalmente os veículos de exclusão e substituição" : ""}.</div>
+  return `<div class="aviso"><b>Seu endosso foi emitido.</b> Baixe o endosso (e o boleto, se houver) em "Documentos" e confira as informações abaixo${sens ? ", principalmente os veículos de exclusão e substituição" : ""}.</div>
     <div class="tw"><table><thead><tr><th>Confere</th><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor</th></tr></thead><tbody>${linhas}</tbody>
     <tfoot><tr><td colspan="5" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td></tr></tfoot></table></div>
     ${s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}

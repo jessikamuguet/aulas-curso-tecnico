@@ -3,9 +3,9 @@
 Rodar:  pip install -r requirements.txt && python app.py
 Variáveis opcionais: ADMIN_PASSWORD, SECRET_KEY, PORT, HTTPS=1 (cookie seguro), PORTAL_DB
 """
-import os, re, secrets, sqlite3, time
+import json, os, re, secrets, sqlite3, time
 from datetime import date, datetime, timedelta, timezone
-from flask import Flask, g, jsonify, request, session, send_from_directory
+from flask import Flask, Response, g, jsonify, request, session, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +15,8 @@ BASE_DIAS = 365
 PRAZO_HORAS_UTEIS = 48  # prazo para devolver o endosso
 EXPEDIENTE = (8, 17)  # horas úteis: das 08:00 às 17:00, seg a sex
 TIPOS = ("INCLUSÃO", "EXCLUSÃO", "SUBSTITUIÇÃO")
+MAX_PDF = 10 * 1024 * 1024  # 10 MB por anexo
+ANEXOS = {"endosso": "Endosso", "boleto": "Boleto"}
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -30,7 +32,7 @@ def _secret():
 
 
 app.secret_key = _secret()
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+app.config.update(MAX_CONTENT_LENGTH=25 * 1024 * 1024, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   SESSION_COOKIE_SECURE=os.environ.get("HTTPS") == "1")  # em produção (HTTPS), defina HTTPS=1
 
 # ---------------------------------------------------------------- banco
@@ -48,6 +50,10 @@ CREATE TABLE IF NOT EXISTS veiculos (
   marca_modelo TEXT, placa TEXT, chassi TEXT, contrato TEXT, tipo TEXT,
   placa_substituida TEXT, data_endosso TEXT, valor_inicial REAL, dias INTEGER,
   valor_calculado REAL, acionamento INTEGER DEFAULT 0, valor_final REAL, confirmado INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS anexos (
+  id INTEGER PRIMARY KEY, solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('endosso','boleto')), nome TEXT, conteudo BLOB NOT NULL, criado_em TEXT NOT NULL,
+  UNIQUE (solicitacao_id, tipo));
 """
 
 
@@ -158,7 +164,9 @@ def serializa(s):
     u = db().execute("SELECT id,nome,username FROM users WHERE id=?", (s["user_id"],)).fetchone()
     vs = [dict(v, acionamento=bool(v["acionamento"]), confirmado=bool(v["confirmado"])) for v in veics]
     soma = lambda k: round(sum(v[k] or 0 for v in vs), 2)
-    return dict(s, usuario=dict(u), veiculos=vs, total_calculado=soma("valor_calculado"), total_final=soma("valor_final"))
+    anexos = [dict(r) for r in db().execute(
+        "SELECT tipo, nome, length(conteudo) AS tamanho FROM anexos WHERE solicitacao_id=? ORDER BY tipo = 'boleto'", (s["id"],))]
+    return dict(s, usuario=dict(u), veiculos=vs, anexos=anexos, total_calculado=soma("valor_calculado"), total_final=soma("valor_final"))
 
 
 # ---------------------------------------------------------------- auth
@@ -326,10 +334,30 @@ def devolver(sid):
         return erro("Solicitação não encontrada.", 404)
     if s["status"] != "em_emissao":
         return erro("Esta solicitação já foi devolvida.", 409)
-    d = request.get_json(silent=True) or {}
+    if request.files or request.form:  # multipart: campo "dados" (JSON) + arquivos "endosso" e "boleto"
+        try:
+            d = json.loads(request.form.get("dados", "{}"))
+        except ValueError:
+            return erro("Dados inválidos.")
+    else:
+        d = request.get_json(silent=True) or {}
     numero = str(d.get("numero_endosso", "")).strip()
     if not numero:
         return erro("Informe o número do endosso.")
+    anexos = {}
+    for tipo, rotulo in ANEXOS.items():
+        f = request.files.get(tipo)
+        if not f or not f.filename:
+            if tipo == "endosso":
+                return erro("Anexe o PDF do endosso.")
+            continue  # boleto é opcional
+        conteudo = f.read(MAX_PDF + 1)
+        if len(conteudo) > MAX_PDF:
+            return erro(f"O PDF do {rotulo.lower()} passa de 10 MB.")
+        if not conteudo.startswith(b"%PDF-"):
+            return erro(f"O arquivo do {rotulo.lower()} não é um PDF válido.")
+        nome = re.sub(r"[^\w .()\-]", "_", os.path.basename(f.filename))[:120]
+        anexos[tipo] = (nome, conteudo)
     por_id = {int(x.get("id")): x for x in d.get("veiculos", []) if str(x.get("id", "")).isdigit()}
     updates = []
     for v in db().execute("SELECT * FROM veiculos WHERE solicitacao_id=?", (sid,)).fetchall():
@@ -345,10 +373,33 @@ def devolver(sid):
             vf = -abs(vf)  # exclusão nunca é positiva
         updates.append((int(acion), round(vf, 2) + 0.0, v["id"]))
     db().executemany("UPDATE veiculos SET acionamento=?, valor_final=? WHERE id=?", updates)
+    db().executemany("INSERT INTO anexos(solicitacao_id,tipo,nome,conteudo,criado_em) VALUES(?,?,?,?,?)",
+                     [(sid, t, n, c, iso(agora())) for t, (n, c) in anexos.items()])
     db().execute("UPDATE solicitacoes SET status='devolvida', numero_endosso=?, observacao=?, devolvida_em=? WHERE id=?",
                  (numero[:60], str(d.get("observacao", "")).strip()[:2000], iso(agora()), sid))
     db().commit()
     return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
+
+
+@app.get("/api/solicitacoes/<int:sid>/anexos/<tipo>")
+def baixar_anexo(sid, tipo):
+    u, e = exige_login()
+    if e:
+        return e
+    s = db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()
+    a = db().execute("SELECT * FROM anexos WHERE solicitacao_id=? AND tipo=?", (sid, tipo)).fetchone()
+    if not s or not a or (u["role"] != "admin" and s["user_id"] != u["id"]):
+        return erro("Anexo não encontrado.", 404)
+    r = Response(a["conteudo"], mimetype="application/pdf")
+    r.headers["Content-Disposition"] = f'inline; filename="{tipo}-{sid}.pdf"'  # nome fixo: não usa o nome enviado
+    r.headers["X-Content-Type-Options"] = "nosniff"
+    r.headers["Cache-Control"] = "private, no-store"
+    return r
+
+
+@app.errorhandler(413)
+def grande(_e):
+    return erro("Arquivos grandes demais (máximo 10 MB por PDF).", 413)
 
 
 @app.post("/api/solicitacoes/<int:sid>/ciente")

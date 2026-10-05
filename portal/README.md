@@ -28,7 +28,9 @@ Para regerar depois de mudar algo em `static/`: `python build_demo.py`.
 2. **Cliente** entra, em *Nova solicitação* cadastra/importa os veículos (planilha no modelo FROTA), vê o cálculo, marca o
    termo de acordo e clica em *Prosseguir com endosso*. A solicitação é gravada com usuário e data/hora.
 3. **Admin** vê tudo em *Solicitações* (quem pediu, quando, prazo de 48h úteis, atrasadas em destaque, filtro e CSV),
-   abre a solicitação, ajusta valores, informa o nº do endosso e **devolve** ao cliente.
+   abre a solicitação, ajusta valores, informa o nº do endosso, anexa o **PDF do endosso** (obrigatório) e o **PDF do
+   boleto** (se houver) e **devolve** ao cliente. Os PDFs ficam no banco (até 10 MB cada) e só o admin e o dono da
+   solicitação conseguem baixar.
 4. Enquanto não devolvida, o cliente vê **"Solicitação em processo de emissão"**.
 5. Devolvida, o cliente confere veículo a veículo, pode **comunicar divergência** (veículo que saiu/faltou) e dá a
    **ciência** ("recebi, visualizei e estou de acordo com o que foi calculado"). O admin vê a ciência e a divergência.

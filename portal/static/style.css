@@ -49,3 +49,6 @@
   .kv small { display:block; color:var(--muted); }
   .demo { margin:12px 16px 0; padding:8px 12px; border:1px dashed var(--accent); border-radius:8px; font-size:.85rem; color:var(--muted); }
   .topo { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; } .topo h2 { margin:0; flex:1; }
+  .docs { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 14px; padding:12px; border:1px solid var(--accent); border-radius:10px; }
+  .doc { color:#fff; background:var(--accent); padding:7px 14px; border-radius:8px; text-decoration:none; font-size:.9rem; }
+  .doc:hover { filter:brightness(1.15); }
