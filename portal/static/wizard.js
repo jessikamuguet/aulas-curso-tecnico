@@ -1,143 +1,7 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Portal Pro Rata</title>
-<style>
-  /* Cores extraídas do logo helppi.me */
-  :root { --brand:#f87101; --accent:#7c3aed; --bg:#000; --card:#111114; --text:#fff; --muted:#a1a1aa; --line:#ffffff2a; }
-  @media (prefers-color-scheme: light) { :root { --bg:#f5f5f7; --card:#fff; --text:#18181b; --muted:#6b6b76; --line:#0002; } }
-  * { box-sizing:border-box; }
-  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
-  header { background:#000; border-bottom:2px solid var(--brand); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
-  header img { height:40px; } header img[src=""] { display:none; }
-  header b { font-size:1rem; flex:1; color:var(--muted); font-weight:500; }
-  header button { background:#fff3; color:#fff; border:0; padding:6px 12px; border-radius:6px; cursor:pointer; }
-  main { padding:16px; max-width:1100px; margin:0 auto; }
-  .card { background:var(--card); padding:20px; border-radius:12px; box-shadow:0 2px 12px #0001; margin-bottom:16px; }
-  .login { max-width:380px; margin:40px auto; }
-  h1,h2 { margin:0 0 12px; font-size:1.2rem; }
-  label { display:block; margin:10px 0 4px; font-size:.85rem; color:var(--muted); }
-  input:focus,select:focus { outline:2px solid var(--accent); }
-  select option { color:#000; }
-  input,select { padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; width:100%; }
-  .btn { padding:9px 16px; border:0; border-radius:8px; background:var(--brand); color:#000; font-weight:600; font:inherit; cursor:pointer; margin-top:14px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
-  .tw { overflow-x:auto; } table { border-collapse:collapse; width:100%; font-size:.9rem; }
-  th,td { padding:6px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
-  td input { min-width:90px; } td select { min-width:140px; } td input.mm { min-width:210px; } td input.ch { min-width:190px; } td.n { text-align:right; }
-  tfoot td { font-weight:700; color:var(--brand); } .erro { color:#d33; margin-top:8px; }
-  .btn.sec { background:transparent; color:var(--text); border:1px solid var(--line); margin-right:8px; }
-  .termo { display:flex; gap:12px; align-items:flex-start; text-align:left; width:100%; padding:14px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
-  .termo .chk { flex:none; width:22px; height:22px; border:2px solid var(--brand); border-radius:6px; display:grid; place-items:center; }
-  .termo[aria-pressed="true"] { border-color:var(--brand); }
-  .termo[aria-pressed="true"] .chk { background:var(--brand); }
-  .termo[aria-pressed="true"] .chk::after { content:"✓"; color:#000; font-weight:700; }
-  .ok { margin-top:14px; padding:14px; border-radius:8px; border:1px solid var(--accent); }
-  .imp { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px; padding:12px; border:1px dashed var(--line); border-radius:10px; }
-  .imp input[type=file] { width:auto; flex:1; min-width:200px; }
-  .imp small { color:var(--muted); flex-basis:100%; }
-  .aviso { margin:12px 0; padding:14px; border-radius:8px; border:1px solid var(--brand); background:#f8710114; }
-  .lista-erros { margin:10px 0 0; padding-left:20px; max-height:180px; overflow:auto; color:#e05555; font-size:.9rem; }
-  .btn.mini { margin:0; padding:7px 12px; }
-  .chkl { display:flex; gap:8px; align-items:center; margin:12px 0 0; font-size:.9rem; color:var(--text); cursor:pointer; }
-  input[type=checkbox] { width:auto; accent-color:var(--brand); }
-  input:disabled { opacity:.6; }
-  [hidden] { display:none !important; }
-</style>
-</head>
-<body>
-<header>
-  <img id="logo" src="logo.webp" alt="helppi.me">
-  <b>Portal Pro Rata</b>
-  <button id="sair" hidden>Sair</button>
-</header>
-<main>
-  <section id="login" class="card login">
-    <h1>Acesso</h1>
-    <form id="fLogin">
-      <label for="user">Usuário</label><input id="user" autocomplete="username" required>
-      <label for="pass">Senha</label><input id="pass" type="password" autocomplete="current-password" required>
-      <button class="btn">Entrar</button>
-      <div class="erro" id="erroLogin"></div>
-    </form>
-  </section>
-
-  <section id="calc" hidden>
-    <!-- Etapa 1: identificação dos veículos -->
-    <div id="etapa1" class="card">
-      <h2>1. Veículos</h2>
-      <div class="imp">
-        <label for="arq" style="margin:0">Importar planilha (.xlsx ou .csv)</label>
-        <input id="arq" type="file" accept=".xlsx,.csv">
-        <label for="tipoImp" style="margin:0">Tipo de endosso dos veículos importados</label>
-        <select id="tipoImp" style="width:auto"><option>INCLUSÃO</option><option>EXCLUSÃO</option></select>
-        <button type="button" class="btn sec mini" id="modelo">Baixar modelo (CSV)</button>
-        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB e MOD (ou Ano fab/Ano mod, ou Ano fabricação/Ano modelo, em colunas separadas), PLACA, CHASSI.</small>
-        <div class="erro" id="erroImp" style="flex-basis:100%"></div>
-        <ul class="lista-erros" id="listaErros" hidden></ul>
-      </div>
-      <div class="aviso" id="avisoSub" hidden></div>
-      <div class="tw"><table>
-        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
-        <tbody id="veiculos"></tbody>
-      </table></div>
-      <label class="chkl"><input type="checkbox" id="repContrato"> Usar o mesmo Nº Contrato para todos os veículos (repete o do primeiro da lista)</label>
-      <button class="btn sec" id="addV">+ Adicionar veículo</button>
-      <button class="btn" id="irCalculo">Continuar para o cálculo</button>
-      <div class="erro" id="erro1"></div>
-    </div>
-
-    <!-- Etapa 2: cálculo, termo e confirmação -->
-    <div id="etapa2" hidden>
-      <div class="card">
-        <h2>2. Cálculo</h2>
-        <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
-        <label class="chkl" id="mesmaCatBox" hidden><input type="checkbox" id="mesmaCat"> Todos os veículos são da mesma categoria? Marque para repetir o valor inicial do primeiro veículo em todos</label>
-        <label class="chkl" id="mesmaDataBox" hidden><input type="checkbox" id="mesmaData"> Usar a mesma data do endosso para todos os veículos (repete a data do primeiro)</label>
-        <div class="tw"><table>
-          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Dias</th><th>Valor</th></tr></thead>
-          <tbody id="linhas"></tbody>
-          <tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
-        </table></div>
-        <div class="aviso" id="avisoSub2" hidden></div>
-        <div class="erro" id="erroCalc"></div>
-        <button class="btn sec" id="voltar">← Voltar</button>
-      </div>
-      <div class="card" id="termoBox" hidden>
-        <button type="button" class="termo" id="termo" aria-pressed="false">
-          <span class="chk"></span>
-          <span>Estou de acordo com as informações aqui prestadas e solicito a <span id="termoTipo">inclusão</span> dos veículos aqui informados</span>
-        </button>
-        <button class="btn" id="prosseguir" hidden>Prosseguir com endosso</button>
-        <div class="ok" id="okMsg" hidden></div>
-      </div>
-    </div>
-  </section>
-</main>
-<script src="prorata.js"></script>
-<script>
-  // ATENÇÃO: login apenas demonstrativo (client-side). Não oferece segurança real.
-  const USUARIOS = { admin: "1234" };
-  const $ = id => document.getElementById(id);
-  const brl = v => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
-  const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
-
-  function mostrar(logado) { $("login").hidden = logado; $("calc").hidden = !logado; $("sair").hidden = !logado; }
-  mostrar(sessionStorage.getItem("logado") === "1");
-  $("fLogin").onsubmit = e => {
-    e.preventDefault();
-    if (USUARIOS[$("user").value] === $("pass").value) { sessionStorage.setItem("logado","1"); mostrar(true); }
-    else $("erroLogin").textContent = "Usuário ou senha inválidos.";
-  };
-  $("sair").onclick = () => { sessionStorage.removeItem("logado"); mostrar(false); };
-
   const TIPOS = ["INCLUSÃO","EXCLUSÃO","SUBSTITUIÇÃO"];
   const opts = TIPOS.map(t => `<option>${t}</option>`).join("");
 
   // Etapa 1
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   function addVeiculo(v = {}) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td>
@@ -168,9 +32,12 @@
     ch: tr.querySelector(".ch").value.trim(), np: tr.querySelector(".np").value.trim(),
     tp: tr.querySelector(".tp").value, ps: tr.querySelector(".ps").value.trim() }));
 
+  const AVISO_EXC = "Exclusão: a placa passará por avaliação de acionamentos. Se houve acionamento, a exclusão não gera valor a devolver. O valor calculado é apenas uma estimativa até o retorno da análise.";
   // Aviso de substituição: a placa é analisada internamente antes de qualquer cálculo
   function avisoSub() {
-    const subs = lerVeiculos().filter(v => v.tp === "SUBSTITUIÇÃO");
+    const todos = lerVeiculos(), subs = todos.filter(v => v.tp === "SUBSTITUIÇÃO");
+    $("avisoExc").hidden = !todos.some(v => v.tp === "EXCLUSÃO");
+    $("avisoExc").textContent = AVISO_EXC;
     $("avisoSub").hidden = !subs.length;
     if (!subs.length) return;
     $("avisoSub").textContent = "Antes de prosseguir com a substituição a placa informada passará por análise interna e após o retorno da análise, retornamos com o cálculo da substituição.";
@@ -182,20 +49,21 @@
     if (!todos.length || todos.some(v => !v.mm || !v.pl || !v.ch)) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos."; return; }
     if (subs.some(v => !v.ps)) { $("erro1").textContent = "Informe a placa do veículo substituído."; return; }
     avisoSub();
-    if (!vs.length) { $("erro1").textContent = "Não há veículos para calcular agora: as substituições seguem para análise interna da placa."; return; }
     $("erro1").textContent = "";
     $("linhas").innerHTML = ""; $("mesmaCat").checked = false; $("mesmaData").checked = false;
     vs.forEach(v => {
-      const tr = document.createElement("tr"); tr.dataset.tp = v.tp;
+      const tr = document.createElement("tr"); tr.dataset.tp = v.tp; tr._v = v;
       tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}</small></td><td>${v.tp}</td>
         <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
         <td class="n r-dias">-</td><td class="n r-val">-</td>`;
       $("linhas").appendChild(tr);
     });
+    subsPend = subs; $("blocoCalc").hidden = !vs.length;
+    $("avisoExc2").hidden = !vs.some(v => v.tp === "EXCLUSÃO"); $("avisoExc2").textContent = AVISO_EXC;
     $("avisoSub2").hidden = !subs.length;
     $("avisoSub2").innerHTML = subs.length ? `Em análise interna (fora do cálculo): ${subs.map(v => esc(v.pl)).join(", ")}.` : "";
-    const ts = new Set(vs.map(v => v.tp));
-    $("termoTipo").textContent = ts.size > 1 ? "inclusão e exclusão" : ts.has("EXCLUSÃO") ? "exclusão" : "inclusão";
+    const nomes = [...new Set(todos.map(v => v.tp.toLowerCase()))];
+    $("termoTipo").textContent = nomes.length > 1 ? nomes.slice(0, -1).join(", ") + " e " + nomes.at(-1) : nomes[0];
     $("mesmaCatBox").hidden = $("mesmaDataBox").hidden = vs.length < 2;
     resetTermo(); recalcular(); etapa(2);
   };
@@ -305,7 +173,7 @@
   };
 
   // Etapa 2
-  let total = null;
+  let total = null, subsPend = [], enviando = false;
   function recalcular() {
     $("erroCalc").textContent = "";
     let tv = 0, erro = "", completo = true;
@@ -320,7 +188,8 @@
       } catch (e) { set("-","-"); erro = e.message; completo = false; }
     }
     $("tV").textContent = brl(tv); $("erroCalc").textContent = erro;
-    total = completo && !erro && $("linhas").children.length ? tv : null;
+    const n = $("linhas").children.length;
+    total = (n ? completo && !erro : subsPend.length > 0) ? tv : null;
     $("termoBox").hidden = total === null;
     if (total === null) resetTermo();
   }
@@ -343,10 +212,27 @@
     const on = $("termo").getAttribute("aria-pressed") !== "true";
     $("termo").setAttribute("aria-pressed", on); $("prosseguir").hidden = !on; $("okMsg").hidden = true;
   };
-  $("prosseguir").onclick = () => {
-    $("okMsg").hidden = false;
-    $("okMsg").textContent = `Solicitação de endosso registrada para ${$("linhas").children.length} veículo(s). Total: ${brl(total)}.`;
+  $("prosseguir").onclick = async () => {
+    if (enviando || total === null) return;
+    enviando = true; $("prosseguir").disabled = true; $("erroEnvio").textContent = "";
+    try {
+      const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, contrato: tr._v.np,
+        tipo: tr._v.tp, data_endosso: tr.querySelector(".dt").value, valor_inicial: parseFloat(tr.querySelector(".vi").value) }));
+      const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
+      const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, veiculos: [...calc, ...subs] });
+      $("prosseguir").hidden = true; $("termo").disabled = true;
+      $("okMsg").hidden = false;
+      $("okMsg").innerHTML = `<b>Solicitação nº ${s.id} registrada</b> em ${fmtDataHora(s.criado_em)} para ${s.veiculos.length} veículo(s).<br>
+        Acompanhe em <a href="#/minhas">Minhas solicitações</a>.`;
+    } catch (err) { $("erroEnvio").textContent = err.message; $("prosseguir").disabled = false; }
+    enviando = false;
   };
-</script>
-</body>
-</html>
+
+  // Reinicia o assistente para uma nova solicitação
+  function resetWizard() {
+    $("veiculos").innerHTML = ""; addVeiculo(); $("repContrato").checked = false;
+    $("linhas").innerHTML = ""; $("vig").value = ""; $("mesmaCat").checked = $("mesmaData").checked = false;
+    $("termo").disabled = false; $("prosseguir").disabled = false; $("erroEnvio").textContent = "";
+    ["erro1","erroImp"].forEach(i => $(i).textContent = ""); $("listaErros").hidden = true; $("avisoSub").hidden = $("avisoExc").hidden = true;
+    subsPend = []; total = null; resetTermo(); etapa(1);
+  }

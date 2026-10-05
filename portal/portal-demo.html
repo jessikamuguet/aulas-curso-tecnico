@@ -3,9 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Portal Pro Rata</title>
-<style>
-  /* Cores extraídas do logo helppi.me */
+<title>Portal de Movimentações | Endossos</title>
+<style>/* Cores extraídas do logo helppi.me */
   :root { --brand:#f87101; --accent:#7c3aed; --bg:#000; --card:#111114; --text:#fff; --muted:#a1a1aa; --line:#ffffff2a; }
   @media (prefers-color-scheme: light) { :root { --bg:#f5f5f7; --card:#fff; --text:#18181b; --muted:#6b6b76; --line:#0002; } }
   * { box-sizing:border-box; }
@@ -45,16 +44,30 @@
   input[type=checkbox] { width:auto; accent-color:var(--brand); }
   input:disabled { opacity:.6; }
   [hidden] { display:none !important; }
+  nav { display:flex; gap:4px; flex:1; } nav a { color:#fff; text-decoration:none; padding:6px 12px; border-radius:6px; font-size:.9rem; opacity:.75; }
+  nav a.on, nav a:hover { opacity:1; background:#fff2; }
+  .quem { color:var(--muted); font-size:.85rem; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:99px; font-size:.78rem; border:1px solid var(--line); }
+  .tag.warn { border-color:var(--brand); color:var(--brand); } .tag.bad { border-color:#d33; color:#e05555; } .tag.good { border-color:#2fa56b; color:#2fa56b; }
+  tr.click { cursor:pointer; } tr.click:hover { background:#8881; }
+  textarea { width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; min-height:80px; }
+  .kv { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px 20px; margin-bottom:14px; }
+  .kv small { display:block; color:var(--muted); }
+  .demo { margin:12px 16px 0; padding:8px 12px; border:1px dashed var(--accent); border-radius:8px; font-size:.85rem; color:var(--muted); }
+  .topo { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; } .topo h2 { margin:0; flex:1; }
 </style>
 </head>
 <body>
 <header>
   <img id="logo" src="data:image/webp;base64,UklGRrQjAABXRUJQVlA4IKgjAACwnACdASq8AqIAPjEYikOiIaESqiV0IAMEsrdwt4c1uQHcbwr97/J3v/rw9N/HH8g/mpq38e+5X9U/3H+R6EY4vpB7H/T/7B+8f/J//////EPoV/Rf/G9wD+I/wj+mf2P+3f4j+j/////+Av+megD+N/zT/y/1P9//lz/3X9y9mX+E9QD+uf6vrIfQF/l39q///svf5/9sf+58kH7Y/+r/Kf8z5B/5b/W/93+f//37wD//+oB///Yf6V/2L8Ze/X+sfkJ/evdPyQ+cPWn92ebt1x5ofxb7Dfdv7r+239t/bj70fqn/I8E/lB/j+oF+FfxX+x/kB/af2/4yDWP9l6AXrp9X/y39r/v3/R/xnxO/Wf4b0N+zn+Y+1z7AP1v/0H5Ifv//6elaoBf0X+y/5P7ffpc/nf+r/lv9R+4/tZ/Qf8H/zP8n/m/2U+wf+V/1D/Tf4P/Lf+X/G////3/eb7EP3F9lr9jP/KWR0sLuJzPav0f4vo+90F7felKtRYP6H9D+h/Q/of0P6H9D+h/Q/m6CF9PP4A9DZNxeEddFckMM/s/2f7P9n+z/Z/s/2f7P9n+z/IFtUZFNAO7TJru5smwG1ZbuBlxggeYtzqlM//Zz/2c8tWctSpGo3V2wZ1fM67YpG9NRnx7Sjz6y5uZI7kdwWW/NLRFA80VFg/of0Mzzp0T2JsIZQ4pLnewCltjfuf/WQhsxkZL6WaKZzroMlRcir8q3DfjzArDf8iKRwlw2DdNZiW+gN189fL78cLnibIb2O02u2Ni8ME+dzoM5/KanGik+dbrvhlzdPY32CLr5Akon9qgqUz9R4F28EDU4FR89nQZjjDUIxtmfhRQEEWU6VHZAF49wUltEogpSm1NQ++9gpjXgPG8Nh+jEH/r9b2dVBeJn5ERhCRloeTpJTGfYrTTd2Q/DHvOpynfHtKKTLK+le3vzx4dYWoQeFh8pL3guU74gtpDzRdqynZKrSNpTQ0or9YDSXVl5dMXhZwj9HMbrCHQbKnnmNfTMDN0I1FGv4gxh2a9P3/LTyJ3FH3Cl6VHcklkAn8Jn1IxdCzL1av3pCDL0/dnzD6sfhPA/c33Sc3ovUkQTl90ytp3PAiRirrZx3RE+pZUYVLOoiWbF7Scz/Qjpq8lBN05e9ZvwXTjmnxfpB8ICPdWXpNl2eTnBf2Am+9Cw6AGNP9r8w7fx5cMubz9udWxiDU08fZlLqYXOO7iLy8QIPBHzDWqzFCuSck1jklnZRqPx5Bx0hE6wwTkKE/FgNZjcBwPAPJTUQAztv7arGHgsqzSc8iYQyM95+jXgD48Rv6dF1cGJgyyng7FdeD6kV0+wHDkaO6jgriS3zLwNEOG2i6xPlr4rcn5r8XNo2282AhBsH/qVSi2HDP68JWGsCuMLjxP8OrCbSlF40psCZvpKoDM7+gyITyRiBV2JHaVUOekl/2QFz+xpHGWPfw8epn5sOS6prGsUs9Y7NIsYEVNSRlbjasxlQBuHXAXXnQlfI41+maaWM/FwMMtbGtsIvXu8+298H8SdKA1T5ndXg7TBfuWWgf6eBom2eGsEKJVnlTd6SGArkJvyhLdcHpvaNlGyjZRsn8F7mfaCAiVWyDRlAcMbVkzec8qAP3+OLg9NRtpF1gRI2UbKNlGyjZRssD97IoGEDCBhAwgYQMIGEDCBhAwgYQMAgAD+/aKblbFJS9J9QC4E34OYVvWjFSZAujYomQrlMFRhk3TDLuRs/U7O3Lp5zr4w2+N04gDb6GICCBSnHUyEYmUzMk8HxAti/PGIDYtS57jldz2MYmXVO6YyD86h290JtWY+cJfXfxYUuouakah1MCrGYa6CQvxEJkH/pfxQ2bzOTsab/Xs/hX2EOYs2hA+ltVo9pPzVtjAddZeqF3sMivqxqp0+ZIZKT3jSLrwQZSe9VTPmMzCUYIAoZtLo4AADoyKKBy1u43mOa2kKhJyrq2hoIvWe+EWYgwmWk3LppT+mOA3CMx5vvtwelGviP8QRFSKupQT94Vl8HlVuWdY314dt4UtL8ueJ8Jmrvk7Mj7r7s6gMtpDXmEC1RPjZpK67/Flllrx4NdASc3LcSodVEBJS7+kXEerapZ/7AROEbpbzjGv7eguon6iDTTF+ItS4e8Rw45QCRmqJhP35SkSv9vKT3UTzQeE740q0UZcEsJvmn2BG9zqCM6cdyS91HmPdE8d2oCpAY/Cul78ERxpeTgzl4Y5KmXJ0wJ1PiOJiXJIz/T6vcbbzeP2fbfYW6cMNzV5AP0y0EkHmaf4+GTeJzuIyi+M0AAX2JJAJId9RmBp5MUptjxnDEBkQk6sXQs5TkJYBlz/jkWyeHljijlhdtDkFsiy3zgnkgGGeine+k4vLSERUfCiGZB5AGg2ZE7aqWDCH985XVCuyW/Rbfo5w4uFsbSYwqSgmYiQQhkyBosYRnJxwmtJjdOYCHyiIk9qT0+zN4OSIAwMje/IgKZue7IIFUW38oFJE5Tu6iEzr+1WKX01i18p4v7N2AnHrAO5XKajQ9qEkZKLzbo6kCkr2pdPDUWTF3vK/TC2ZicC2ewcauRnQUhCTYKhNkCOzj1SumtaWDQ9wyvLDx4J6Sf5mug/ehgQUPmrNsrZmBEpfinSmFcHUNGDccoAhS+mwkor5uDJQ+q5LF2Tk7SlgAUkqEE55h0ZBYK0/vKP3ERnuMNdFiguiV7D3lCVXkei8mJg3oimGYQqPprzyAGxg0g/Eq6el5uRZ/BIYm6gNE/DPfrkCtAvD1dD/Smwr5CudYZlY9HUugZkq5xrluV7GbQsWr05MaPGFMwv91sJ2t9I4RxQuL0Um3E8wqy8RhM5C4ieVenOQHBu1ZCC/+MbdL5DNs2+rwH2SYqNg9cHYrKmLtu8GW9AR6Dnfb1uzzVQ4bp84eA9RSriqlXEe4oambp5um2uRy6OGWoZA+29hFyEyfczxa5YZUssQC5UYTaQDuiQ+bgBlSTVzEF2DFAKg0yI9O8+FOpI1ftyqeEy1YLr5PFfZm0JQGOfr5DfmFEH/erPNueEwQrZ7urZCgcZonGykg6jvjP1dP76dGIQXxmlIy21XszoOvE2SCb5GgJYuw2+0P9cDftY6JN+HUOJvA4R7NGUQKX/b8nRUSZw6RHQEzRkBzPWMgqG4V6RXp4r+lNuLV4euEyKokrn+e+RXu+EY8zi+etLxIwpMy0WpaFJCI358ODoe0QHarTFhahKUwi4NJSM91I0HOhkpnzgXASZN+z+AZ2mV7Gs44F7M5qhLlLw2k/ZXwJebJ2vS4XgVPNtdARREPzAZEdsERPJTw5CJeIcwbATTXrVfXEb+SL1FkGm5FVgR+Q7aEB+P4W0ygarmVxeom36hLzsgPvDrE253OgRmtMIeVBSSbxQup1yEq9tbSBD6FLc67ECCd4r2sq7ivVmAt0rMgQU5/PZoqwBTYfQSGoNRaOdx06OvkTU3txPMfGwWI3jjFYJZL4hn4+Wnawvt4WlpYv7K+lHcoAt/M21XSPAjJXxg9ncOzWo6cvk8q36e5Gwr6s0v24JMAa4OqOkpPevLT88rbXw5sQ/AmhfPVFvp+v4xtkUy/sjmaRE8Jdk3z1OL/GokSjZZyCexgoyTFt96GY2FAgheh72SXYRcsnJn9m/Pv9ISGQllH+3cDKl3GF50MhNsEKo/XC64pV8G8e5u4VEuc+vOovLQPsLdJAEcclAFjh1+3Th50Z6Tw8yCE5YTmqSyJWzFtN9V3dlzmDtG1+zu/tVS6YdZfDAakOLBzJtpjkv9v/XWCgvUvBf+wIrDmcvHJqu86XYTj0E0nYOGga3S2iKGAvh71+QztUPl4BVhNJEsn21pbuFn/B8IGkfYE+dHdduBePCiBc9esZXCH5Y9J0KAHG9sJa8kwpRH4sY5IfqreEQalaXSeMySOJJrd14LmOHxeT3Hzwah/ECfk0vrH5E03vQJs5/MvNt37HmwOpv9kLGOhMVoUxYQawE64uXzFTpBenDh5FIWrnxFj+aYC9RqYdfvp2ulAv5rl3rIIzdFH39iS485n5JEmrESPDv62Emhpo0R8XOhFUQaNYUgIFRI5xdWob63h2+4i1Z6QKrwBUDbwqkkv68DXvq/M3XRSMbmPsMYLsPMtNFYpTWGtbS84V26cLmYwEIeGCHRv2jEpt+G637+iTqH2H9p2DNgMwPxV+YOKotrKTihjbn/ByB/uV6z5s2u6itnQf/0/JV6LffQMjVMEGsIDTxKPXjcfhAG7gOK2lUWGoNfQRbis/LKfUU1bCMlsJ9KxaAa83ALJHQHpYEYVJK2Y9jBMxKoDPOR5bDyOmIS3/SNPX4QFj/Js9ugprwVQb3EjZBo61l6Zk99d/6bixmpAMmjc7ZtF6QqcfB9NHJDAPGKRBanhAkqRVGPs9HLDfQzK+kX2e10Sr7hLPZhG7b+vdaffDTef/lMQgTW4KybRp5fdZlxMtgZgMNdxSSA9UusrboXI2wDWZO729+mrDp0hGjhYsmZxAJ5/vTQfJSNGQUD+Ij2wGmofciRNMipcJqWITC2fQ3XX1gBO+RBQl+UXspZ1Wj8BMWhrZ8UAJfcva708hyTgc8Zd/FRQ3huHAeJqT8HuIbqxHevnnP9vb++uZRhXY4Ng/IILltntqdiHUff26b68ks2CjtbH2V9avOgUM8yDtdQnJUU67mx41B/dlj69sRjNZavxP1dQb/ComFUtQL/6zPRNZ4weVWcFWuG7kvry1XyrqYzWGEd/RF4j9Cx6QeBdpT9AZGWgYVp0KYG0bWzZjdeQL5FfLXVM0qHsiSArfHA+f5IDnnznZl5z1SEQPmBlc0gibgc1CWsVCUwkmDCWL3gD6XvADS0MAeokxFywlE2JaTkmYTnh0RWYBZvUxaqrRjDQ0oIssqTBD2QKpFKpv8QtrUDAcc16we1Ua/9nf32A/rXZPuerUrzFvvbwI+TXzT6uEw2BjrA7XbV6m3oJ25wMChGTY1TBnGPGiLXwbOLgK5di8HOndvhWjTb9+BUWk8h7hNAWt3IZA2kakD7yHnc+OC+wU01Guyin0XX7oyRg3NEwFFT03EutSs//vQbmSMy1p1L4FrBzNeijMfGEz1yFP4k+SZ5K7LMf3F4NuAzfbgs0sCG3I1mk1fu/DqnzIXtZtTCUq+rF78JX9diwb4aCQiFzP+YMp27ryFqaoiKdOhfkPkIUl5K7IU8He/ya2SpqrNYy213okIcmNhdFo4l/p3wKpv2RdKw4ciCEtD5SluEPUEEbEczpDXYH6kn0MLR8hf2lSODx4b2TS45r2D5STTOpoMRRPvQInZIvsMKL27WFiCWvNNGlBBr+J6BxCr+BxP6Sm/6hFgBdCOi+ez4hj8K5OqIQBNPNkK2ftQL6T3/y42XR9XUeL5TzRf89jnasj2zijlF5SR9y03mCcaY/a8PDUcjhMqEjg1EddWw768P5k6v1LZqn/efQ+cdGK9bGJtyaKPsrT2NCbVt9+oNMcf9/E2MJCDMo+ACJLn/Bt+jeQ/R8AyL1iffUTybwYadVCIUMh+8GIs/R2NSdvRTZvYcZ55WZBj4hyHMYTiy8r0lx0GLrFALzC+gTPysSfmg7GMn8ymrx22FTpI9noWiI0aDbTEFnsBqJuyYQOUz3TFVaqsattvtUtwMSGj5r4i3Af0j+EItT/QWh9nalpjCMXjsWaE5V/ib6szeSuF/w1vBS9Hn2ed+VGkGKxY3YimU9fXYfHSNNhvhvcxqeH0TQ2JizzD7CwX88ObHn9v0l5GLP038V0ehvQZIFwipL4Zm0IUwQAyOpcr406SWqwTwOe4vUMf9dy3aARc1i9n9g3Z6HytlIohPTp84RHZA13ce5bIHDkHheOFs3FfT8vs+EKBzAJ0MpyHuA/9+pXMxKIO2NjEZ9f6PC66XOG/vnwSiPkzFCoYW/FR6/g9cBNN9nM2rhhiJGgej4tmFA8j7ViYDabCCf6k7kzy3XJB2OpZ1fbuUxriN53GYwWgwEeMIt3w4oLFwWCfHC1jw/HR6bQKhXgcvEkZufjbkS9iqd5kC/w7zqR6hCbo8XmXbyp1acgl8JbRCQH99fgxurn/T/FhwvzkbaX/G3t+C4ESZ5fj1Ky5NixRt9tBff49GBGWihp0QIVfJXMsxBBhcCp8pSClT9KJp1+rC9GAfX+VU3zVQht8let6Qrk4QAq9rxnPwtfmxX9+qM+bbff8GVDChRFlcBp7ylO/nl7iynljWF42ix7RXWHEIVb0YmmnO29WGivTEc6kTB3Jbp0At1X1TRxUC7vXJtoU4zNLcF/z5AfPh9D9AwlRLH4qW7Y3XitKSht10SnTqrhvAhaGwnEiMD97SRVvirU5C68kJ6+3WSmrLu9r6rL/xtWZHY/Re7jshQpac1oHE1nnKVPbzusrNdwYeGTK1i+qLqoduz7/MFTUdk8lXQFHEEgdH35eAkCxW7lR2CWIBnk9JcuP2shwYKv5UiZTbc5FvkLffLlvxVianELgyatVdOcOrZxjMqLdWQUDsndnR89ScQViTRyVAA3xNa929HzuD+dVluRQMb45WDhIfj4TgsV7VhnB/C/jy3YBXwDZIXQ864ojDmDhNX1Zkhyc4imIRritO0o9AUf/VAZEiKqemHnagir5m+wb52DaVPD2RQnwAfA2b0ox8YLsdCVJE98ypMICLG1PB+IABupVwmJxUs07C676MQ7fhQOxba/eGnWeGEEoBEIjPSCCVL+TtO/qlUuy8gAha/GAw3rbs/m1CL3POgrom4GaopfC4krjsI+BPMjZ+hWKFv23GRuWv44hlWt93FBuH9a4sXXdFohd7Mnb6PJlRSYZcdbTigIPEPfbUV3gVE2E3c6fdYxXj+8ZzTg8bX8ruLwK+49WUhL9LP2hVVFRnDZ3gCrjiLZSvYwZV+5nTdWrEJKt95HJmb2KVHdxyX8c+E8ZI8Gaa1jYZfw3Mo+y/zoVf829Mxi/jS8gFyujdZg8DD64zapeH0qynXsQ1Bq0DLwHpDxJUt+079GetlG+DhCPS9l0ea2IYmYv0AN9aKE2dG57VmkHlMkxD6IsB85x3+9f4UyRv9Hto66ERZBio58r+SzN9thIIBmxbqe2asObga68Y8WUscJ9buRuiYN5O59TYL8ntd7Jmwfsnci1e7Cvx44F/nkhhtgymThI93QbpzXXF1cNnmXaUmiSR3swi2cG6I8ahoXtQsAFxOsqRqYqh8ygyht5TjeJp3LVqdTibzizmLyJCRunqganeB/4zY///6wdJVGzMDACD/+Y9Xn3qyYmptUVJUurhxGQpn2SXArFC8rJjAEFGiLJg7Kqw/3pxlZ2eWWfYcA1LzHU6fJ1kMmY3YOMbxkal3uxFPFDq8OMpZsmyTxJBOpMcGEB27cQ5kzj5e2mRFILlrK+AgUAqqWCUOjxokwkXcdU90O4yNuQXPu7CtOTBRD+SRNHzMSfkzoiUJ6/BzxtXv4oSE0MC8OUtrZEwvhcgQHiwleqNsezksf8Q5leeytf75zRaoEpIXXassni29mPdsH33pxj0PqaCTr6mvts25HfNkExk7ImZJ44ZkIU4/rB3Ur77duq46RZbjrAnCHR7EDAY7vSt0bcxjumyuuokrdKZpUUkO/lzsZVaGxXxm4HWLVRQWfOTjRoZ067WXolrlJPN+bGviNBai7kxt8y8UtuLLWBjn5DNF4ZQ11Sfm73tC+4ml/94YpvnOiXE+YTtJ/gWb0Mkl/8TL0tdZx7Bc7rBBviQiktLrKxysrQaPbNMXZXDAna0q+DSZuAiPep0idUJocjslaQ9q0OX2FWCEzPbDUCalE+ceZev1ZBuPLcWIm0QHuV4eveaj4nc8hzAMwxhi1IT+aXwPw0BWGVyEQ89VY/vfykJxTd5nSMWIuqydpPHduj5W36jHRikowQ5rZd+m2NcgZ/WfPcYKrd6GtoKtE1AlyuZcdq03Vl/7jOUSx8s2Zlj9IQ8Ar+pbWU9nQsgaphTo6dcv3xPdb+M8GhK3R8jRVH2oESJgiKf4eGbKgaA3lK5CiRsVlzXlYtiOTxuTcv4NBl48rXJDjAeiZgV4OvkV3UMGt3zQEXHzkQZEb3HXRQ/p8YMgAuNIh+wdLDJdAFe0PPc1Fa+ORNH5D3cqrMxU5xpKfND4ZWiLU6IqXdgJmCKA8cam5YE4fQKePIyPfphQnxZXMrGZjXiYA6QOc+wHoEgcLjtDK+aGKF26WnFTI/almKPGr60sx7Gja01KH/XPsajW9ceQJjHnK15m2SLMYNUP6YuYAmnewKPXKDnl4clCJ5XBPgpfmaE3KeLmoYEbHFusHoLJ5n/MTNT35zGZ8m0zTHa2+0S286CwmnU9u/PeG/zZh/jQ0mY2sPuHJROGfnl2dynsLHT3ZlhGLS7VKz6qx120h78Qb8RzIkxUodqmU5nOloJCuiNoOikefzP74+6/P4e0Rj/eSdWQGvOZ50os+vRsVEfL6sFdJx2CdblJWQxPfZ0NBJ40k6pKtq6mgJ3JgCuuTSCsCqAKeqbZCryhqiGEoT/Zn2lc3Jw25gOfPJaN8WbwQ22HNA1fKPUMpn7yyxNuNx8JH0velQjh2nYC27YF+NksYwxwEg60cjAl52b7liXOruM5DLRr02MMoqP0mbGdMuLxP1yTjlyrxXDTNtiPEBulX6+CUe1FI9HB3WencHSR5gwyHb+sB3Cez2/HM0qMpxRBcw5Pet+GRdais7byPH8c/h7W0UP3SduvdXJqUVD/8lkHOXiyLq5l37Hds6fU6Wssjn2hmH51f0fP823HOkP4lhLAHRk3Gqq8ythUTtHJ/yShT4eF+3rUlEvWrhtSgOugMXjIsB0m6ZYh1/fDNHSJyfXQunbUEwFNUtSsEQhhAMZTYCbSAtHycaZtBR8aJSpl2GXUREMirWS4FecZ+VdmjCRCy7WIsN8FuuCFgSbYOeukohRN+vPWWbF0SncGU3I8FdHW+w/1gCNPPC0p3ZCBdUod8UnsyTlh+qhcYKlhND4xpYAfye+X4RysV0QYWnvxzNMvBcaQ8KvVpLPbNg1kF//vTG1dINR16VpyOh2avoJfETrIcDPXf17DeXkh7sEH5XRbBOpT57cO+U/Jg0jMEJrbm0Hcs7PHWUfSUQmWQyoRwdvkvQncjfhQjaEBNio8scRmwvchSdUShoEMMRse79nKUsYltBQoUMNup/FfOEIF+DpT5fO7e7GUaNnHRI1a3pOWaZKQRg1zXwlGSgSKVG/4f3l2cbDvfv1FopIF/0gENVUGPx8fIzSwGhEp00s5MkoQd19aa+Q0/GW/ggHZZP/+KUoyYoTigN2UCeLYz3oit7T7nqrXFUmeCNMxrvQ8yUVX0yYOzqheu6DzyprKmpmoT1919GHL/2SqAWG3PaX8/5FQ1PB/Nj6EVX2k13rlu975Y4mH8dFGLdy2weOh5BU2PY1zMbPeMJpwmlLTBdJAIUDOJPG639EBdYZlyyvnhpwP7UGiaaID32t/jAWDv+CZufr5WBxaKcYn7uYSKzB+cMi+ZPTBnUY9ehQZwy6dTtJYBuOnopoNibty+brY05AY71xAx73UcnLQaKG8P5VlIt9z2TNMoRfdA7DSGUBi629FD/hMuW0IVnX0eLpGU7yeSp+fnwQX813kJnKAjCdGIp/sFQk1ADliyzs61SHcl0ES/PQfxd8JM1DtxuGOon6o5WFp1nJ3lAgMVVIw5x3waMMKdEUszaBpuCTPrNbEbL28vYHWk0EEAe2R+2fxtCFNj23sR+JobJeeWbQhG0Dmz1FdXO+f5VuB/bJyyzoaxGY5CP/Tjm6vjoOkXia3bmBbFVue4pHEde8RG7/Ey5fjdMgWBCC/lpo4IBueRZK8Ln1tmPHHsqc5Scqll4Qf3E38bL0bkEwiGgb6g4pSLQp6botexNjv6wYop9oBMEEgjMIQWlRRwDONIxPoVO8ytNLDu5h+mbuHghOLMogpxVPjLEXCnODKOJ+rqe1NN4PAN37gX6NPPt9NqVSZK6eO77aAcWd1KecIrGJcZuvy7zG8fIoARgfnSNLwZq1r1shPE4nJc/FKPtgFecEwv3qbb+9r+6u/vVOL0yey4eQckvHgxMVqIvmthsMWJvQIXaKwGEH5G3G/rRceLFkG36nmVH4TuWtlhq/wxVqUQA5ZfN3a8FVv6p7ExRBUDX5/+h6fIq9gd/44LKod/L2sWJ7/QhNreNDr1qzQnfK63uSvMbZryNBGjxvDYqJY+gv4DUHa6RLbVC6tKOYuiQpDqXwila6I1uMj5Iz9JEfz+RKb7BB+qkMSZmPxBqrveSoWrw9Xe45VHjVsIJuKiVpNrEPjUQaVsxyFO0fxhaeM5sm4coEyUKsipHbajTA8hL5lxFWf+/46w+6OJGBSiPARZy48u3B1cXS7go7wBOkhDTWvgCdI+KK6G4cGBgJU5n5kXsnzGsqoJsFKpAQwL7To35iqg9R1j3OmdbM8+VbgMjEtwq+idWQLGL8Es+gSmzRAK76YqiitiGIiUgv07Ct0orc5l5w7/gZLmiqQociD2twBA7PBwyCdFbJGZ0Mlyq4E8JQuRkiL3DFjX8wz4ER82zftdYl2mh8fEFJgf3cxcEl9H6iQAsRYh0aDkzt91wpv+vplGwsuWQ1Aj4IgkvmNYj+1zTWkFh6qO4Dn+JsMyCRw1Wd6GK21PnQ3XqvDRuYFGgb1lwCfERDnbsCTr1kPhso58JoBRK+xIaE6/1S0lxaLciBmVIr45Iw8ft6bJ3Ejpori48SJRwwftwm/gNL/fIkiK/958Tr0DTQMhY/CyNmf3rI8tf/sspPjy5U7X+CCgEHoA5pcvD/rMSLhEMQtla7FY9jCTsQpePPiOXqOAtvQUFpeCJ1nvj8a5iyULgpa0oJsCQ1UFT1rGaAmpXSanser8arqfXIuvJs8kZarTH6hu8/v3ViG2AeN9ALudYp34D8V++Qtt55JycZBu4aA2ms4pD/sV7AjcEkcgKzUPiFSM9Sr2cdCrWmoTI08ENzrchhSmmtvLEbWEGOmiOqY+HTELwQWFnAfKedqfADDt8+mWuY1GEr0p9WK9wDvOVkZWMmZr6i18xPYTvqKGIjchnCwo6cwBOeATdZ34TDGj8AkUfrrjTlTvdLnzg6K1IzPTH+qYZunIj4Kt/ORoMFeIpHd9QtTyaGtJkxUmRAn5tBW4ig49NK5ZLiiKpQWdsJ17SlYGHmm+qd6YGJjF54HN5owdtealoFwDseKAhOB/bQFeV+0SiySPSjGztvanv31iGEsH4XLYRLkXKPSxEpQLi2LdausUlH/gLmPGqZQCojyOT84xvqS/9p/wIqD2oQrwyfcfrE9GK0wSS9YWecbhmvGUD3BCrUBowYotevZgSsKaw6nda+I6w1265ijXBW9Q3xi5ZnM1Lh/EiC7xowR1iCVaYgjK48mXHiNpFu6ZclAKd/zBTMv0WGl2kgaG4Nxlbd28eTOHW/DcWaxOWU/5k/NFf6wXNaUD6GAMTjfhd3F/9sRo6QlF31BtQnLml/nfXt9SGjcoWRcJjRb0kvhPS9CAUmZU2aTpmWLrFEJGAMycmGYpTJm2+8bsyQWpHiPM2g/1etECMYILQlyM4bmIhKzDt+84YPPN/a3Yb+4A08y2J71U70eBxWXU7XqdUVm2BiG9+yYf307Q/dSYFWsHeTWr3zU6wWDgCCy87OiMKg08OMfPvs+5Mo4+C141iA9aghHB00vy3WLcnR+BkhQ5BIMHKqH+DToEkYfbqvKLkp9yYRUVbLUIzeqShXBQfBU4/zAz09qkseNI3xDQRD3ogPrsYHtd1AAAmV1H0H5S0ObH7LSJwpY+7WIwuz4qgqeYO4wj4W5i5oPtKloiqPQX00U6+SgADIi/FvCXOr2EGF5przpT/pIbBPMfrtO++3/112z+vPplRZSOm24dSnisjMSibRup0uheV0rGCupzAVn+QJ7TB7AS2GN2sWo+pUIQTTafI3x47zZ7URV2qBuYWqQvjAJrLO/MFSE+pK5mM9hv69vI/SScQLcMLBmV46i6ME1ZkBv5Eqgv5M+vQdB2AXMo+R86L3s8QISxnOgxP9nyVlttzJfsGo7h8d7siy6X2Sd6TRoEkCnDEMg7TcYlzSfpoTla5pGRsphDthqpa8mvmDAv7jYt0yaGW1c10CSUeBhPlgChyMJdmfgAAAAAAYppmoAAAAAA==" alt="helppi.me">
-  <b>Portal Pro Rata</b>
+  <b>Portal de Movimentações | Endossos</b>
+  <nav id="nav" hidden></nav>
+  <span class="quem" id="quem"></span>
   <button id="sair" hidden>Sair</button>
 </header>
+<div class="demo" id="demoInfo" hidden>Modo demonstração: os dados ficam só neste navegador. Acessos de teste: <b>admin / admin123</b> (interno) e <b>cliente / cliente123</b>.</div>
 <main>
-  <section id="login" class="card login">
+  <section id="vLogin" class="card login" hidden>
     <h1>Acesso</h1>
     <form id="fLogin">
       <label for="user">Usuário</label><input id="user" autocomplete="username" required>
@@ -64,7 +77,8 @@
     </form>
   </section>
 
-  <section id="calc" hidden>
+  <!-- Cliente: nova solicitação (assistente) -->
+  <section id="vNova" hidden>
     <!-- Etapa 1: identificação dos veículos -->
     <div id="etapa1" class="card">
       <h2>1. Veículos</h2>
@@ -78,6 +92,7 @@
         <div class="erro" id="erroImp" style="flex-basis:100%"></div>
         <ul class="lista-erros" id="listaErros" hidden></ul>
       </div>
+      <div class="aviso" id="avisoExc" hidden></div>
       <div class="aviso" id="avisoSub" hidden></div>
       <div class="tw"><table>
         <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
@@ -93,6 +108,7 @@
     <div id="etapa2" hidden>
       <div class="card">
         <h2>2. Cálculo</h2>
+        <div id="blocoCalc">
         <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
         <label class="chkl" id="mesmaCatBox" hidden><input type="checkbox" id="mesmaCat"> Todos os veículos são da mesma categoria? Marque para repetir o valor inicial do primeiro veículo em todos</label>
         <label class="chkl" id="mesmaDataBox" hidden><input type="checkbox" id="mesmaData"> Usar a mesma data do endosso para todos os veículos (repete a data do primeiro)</label>
@@ -101,6 +117,8 @@
           <tbody id="linhas"></tbody>
           <tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
         </table></div>
+        </div>
+        <div class="aviso" id="avisoExc2" hidden></div>
         <div class="aviso" id="avisoSub2" hidden></div>
         <div class="erro" id="erroCalc"></div>
         <button class="btn sec" id="voltar">← Voltar</button>
@@ -111,11 +129,60 @@
           <span>Estou de acordo com as informações aqui prestadas e solicito a <span id="termoTipo">inclusão</span> dos veículos aqui informados</span>
         </button>
         <button class="btn" id="prosseguir" hidden>Prosseguir com endosso</button>
+        <div class="erro" id="erroEnvio"></div>
         <div class="ok" id="okMsg" hidden></div>
       </div>
     </div>
   </section>
+
+  <!-- Cliente: minhas solicitações -->
+  <section id="vMinhas" class="card" hidden>
+    <h2>Minhas solicitações</h2>
+    <div class="tw"><table>
+      <thead><tr><th>Nº</th><th>Solicitado em</th><th>Tipos</th><th>Veículos</th><th>Situação</th></tr></thead>
+      <tbody id="listaMinhas"></tbody>
+    </table></div>
+    <div id="vazioMinhas" class="quem" hidden>Nenhuma solicitação ainda. Use "Nova solicitação".</div>
+  </section>
+
+  <!-- Admin: solicitações -->
+  <section id="vAdmin" class="card" hidden>
+    <div class="topo">
+      <h2>Solicitações de endosso</h2>
+      <select id="filtroStatus" style="width:auto">
+        <option value="">Todas</option><option value="em_emissao">Em emissão</option>
+        <option value="devolvida">Devolvidas (aguardando ciência)</option><option value="ciente">Com ciência</option>
+      </select>
+      <button class="btn sec mini" id="csv">Exportar CSV</button>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Nº</th><th>Solicitante</th><th>Solicitado em</th><th>Prazo (48h úteis)</th><th>Tipos</th><th>Veículos</th><th>Situação</th></tr></thead>
+      <tbody id="listaAdmin"></tbody>
+    </table></div>
+    <div id="vazioAdmin" class="quem" hidden>Nenhuma solicitação.</div>
+  </section>
+
+  <!-- Admin: usuários -->
+  <section id="vUsuarios" hidden>
+    <div class="card">
+      <h2>Novo usuário (cliente)</h2>
+      <form id="fUsuario" class="grid">
+        <div><label for="uNome">Nome</label><input id="uNome" required></div>
+        <div><label for="uUser">Usuário</label><input id="uUser" required autocomplete="off"></div>
+        <div><label for="uPass">Senha (mín. 8 caracteres)</label><input id="uPass" type="password" required minlength="8" autocomplete="new-password"></div>
+        <div style="align-self:end"><button class="btn" style="margin:0">Criar usuário</button></div>
+      </form>
+      <div class="erro" id="erroUsuario"></div><div class="ok" id="okUsuario" hidden></div>
+    </div>
+    <div class="card"><h2>Usuários</h2>
+      <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- Detalhe / devolução / ciência -->
+  <section id="vDetalhe" hidden><div id="detalhe"></div></section>
 </main>
+<script>window.__DEMO__ = true;</script>
 <script>// Lógica pro rata de endossos (baseada na planilha "Base para cálculos")
 // dias = data do endosso - vigência inicial
 // custo dia = valor inicial / 365
@@ -150,29 +217,147 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
   return { dias, custoDia: novo.custoDia, custoDevido: novo.custoDevido, valor };
 }
 
-//if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso };
+
+
+// Prazo de retorno: 2 dias úteis (48h úteis) a partir da solicitação, horário de Brasília.
+// Sáb/dom não contam (pedido no fim de semana começa na segunda 00:00); feriados não são considerados.
+function prazoDiasUteis(inicio, dias = 2) {
+  let d = new Date(inicio.getTime() - 3 * 3600e3); // relógio de Brasília nos campos UTC
+  const w0 = d.getUTCDay();
+  if (w0 === 0 || w0 === 6) d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + (w0 === 6 ? 2 : 1)));
+  for (let n = 0; n < dias;) { d = new Date(d.getTime() + 86400e3); const w = d.getUTCDay(); if (w !== 0 && w !== 6) n++; }
+  return new Date(d.getTime() + 3 * 3600e3);
+}
+if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso, prazoDiasUteis };
 </script>
-<script>
-  // ATENÇÃO: login apenas demonstrativo (client-side). Não oferece segurança real.
-  const USUARIOS = { admin: "1234" };
-  const $ = id => document.getElementById(id);
-  const brl = v => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
-  const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+<script>const $ = id => document.getElementById(id);
+const brl = v => (v == null ? "-" : v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" }));
+const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtDataHora = iso => new Date(iso).toLocaleString("pt-BR", { dateStyle:"short", timeStyle:"short", timeZone:"America/Sao_Paulo" });
+const fmtData = iso => iso ? iso.split("-").reverse().join("/") : "-";
+</script>
+<script>// MODO DEMONSTRAÇÃO: simula o servidor no navegador (dados só neste navegador, senhas em texto puro).
+// Em produção quem responde é o app.py.
+const Mock = (() => {
+  const KEY = "portal_demo_v1";
+  const seed = () => ({ seq: 0, vseq: 0, uid: null,
+    users: [{ id: 1, username: "admin", nome: "Administrador", password: "admin123", role: "admin" },
+            { id: 2, username: "cliente", nome: "Cliente Demonstração", password: "cliente123", role: "cliente" }],
+    sols: [] });
+  let st = null;
+  try { st = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+  st = st || seed();
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
+  const fail = (m, status = 400) => { const e = new Error(m); e.status = status; throw e; };
+  const me = () => st.users.find(u => u.id === st.uid);
+  const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role });
+  const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401); if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
+  const soma = (vs, k) => Math.round(vs.reduce((a, v) => a + (v[k] || 0), 0) * 100) / 100;
+  const ser = s => { const u = st.users.find(x => x.id === s.user_id);
+    return { ...JSON.parse(JSON.stringify(s)), usuario: { id: u.id, nome: u.nome, username: u.username },
+             total_calculado: soma(s.veiculos, "valor_calculado"), total_final: soma(s.veiculos, "valor_final") }; };
+  const achar = id => st.sols.find(s => s.id === +id) || fail("Solicitação não encontrada.", 404);
+  const placaNorm = p => String(p || "").toUpperCase().replace(/[- ]/g, "");
 
-  function mostrar(logado) { $("login").hidden = logado; $("calc").hidden = !logado; $("sair").hidden = !logado; }
-  mostrar(sessionStorage.getItem("logado") === "1");
-  $("fLogin").onsubmit = e => {
-    e.preventDefault();
-    if (USUARIOS[$("user").value] === $("pass").value) { sessionStorage.setItem("logado","1"); mostrar(true); }
-    else $("erroLogin").textContent = "Usuário ou senha inválidos.";
-  };
-  $("sair").onclick = () => { sessionStorage.removeItem("logado"); mostrar(false); };
+  function criar(u, d) {
+    if (u.role === "admin") fail("Use uma conta de cliente para abrir solicitações.", 403);
+    const vs = d.veiculos;
+    if (!Array.isArray(vs) || !vs.length || vs.length > 500) fail("Informe de 1 a 500 veículos.");
+    const algumCalc = vs.some(v => v.tipo !== "SUBSTITUIÇÃO");
+    if (algumCalc && !/^\d{4}-\d{2}-\d{2}$/.test(d.vigencia || "")) fail("Vigência inicial inválida.");
+    const vig = algumCalc ? parse(d.vigencia) : null, usadas = new Set(), linhas = [];
+    vs.forEach((v, i) => {
+      const n = i + 1, placa = placaNorm(v.placa), chassi = String(v.chassi || "").toUpperCase().trim();
+      if (!["INCLUSÃO","EXCLUSÃO","SUBSTITUIÇÃO"].includes(v.tipo)) fail(`Veículo ${n}: tipo de endosso inválido.`);
+      if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placa)) fail(`Veículo ${n}: placa inválida.`);
+      if (!/^[A-Z0-9]{17}$/.test(chassi)) fail(`Veículo ${n}: chassi deve ter 17 caracteres.`);
+      if (!String(v.marca_modelo || "").trim()) fail(`Veículo ${n}: informe marca/modelo.`);
+      if (usadas.has(placa)) fail(`Placa repetida na solicitação: ${placa}.`); usadas.add(placa);
+      const ps = placaNorm(v.placa_substituida);
+      if (v.tipo === "SUBSTITUIÇÃO" && !ps) fail(`Veículo ${n}: informe a placa do veículo substituído.`);
+      let dias = null, vc = null;
+      if (v.tipo !== "SUBSTITUIÇÃO") {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v.data_endosso || "")) fail(`Veículo ${n}: data do endosso inválida.`);
+        if (!(v.valor_inicial >= 0)) fail(`Veículo ${n}: valor inicial inválido.`);
+        try { const r = calcularEndosso({ vigencia: vig, data: parse(v.data_endosso), valorInicial: v.valor_inicial, tipo: v.tipo });
+              dias = r.dias; vc = Math.round(r.valor * 100) / 100; } catch (e) { fail(e.message); }
+      }
+      linhas.push({ id: ++st.vseq, marca_modelo: String(v.marca_modelo).trim(), placa, chassi, contrato: String(v.contrato || ""), tipo: v.tipo,
+        placa_substituida: ps || null, data_endosso: v.data_endosso || null, valor_inicial: v.tipo === "SUBSTITUIÇÃO" ? null : v.valor_inicial,
+        dias, valor_calculado: vc, acionamento: false, valor_final: null, confirmado: false });
+    });
+    const agora = new Date();
+    const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoDiasUteis(agora).toISOString(), vigencia: d.vigencia || null,
+      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, ciente_em: null, divergencia: null, veiculos: linhas };
+    st.sols.push(s); save(); return { solicitacao: ser(s) };
+  }
+  function devolver(d, id) {
+    exige(true); const s = achar(id);
+    if (s.status !== "em_emissao") fail("Esta solicitação já foi devolvida.", 409);
+    if (!String(d.numero_endosso || "").trim()) fail("Informe o número do endosso.");
+    const upd = s.veiculos.map(v => {
+      const x = (d.veiculos || []).find(y => +y.id === v.id); if (!x) fail(`Falta o valor final do veículo ${v.placa}.`);
+      const ac = !!x.acionamento && v.tipo === "EXCLUSÃO"; let vf = ac ? 0 : parseFloat(x.valor_final);
+      if (isNaN(vf)) fail(`Valor final inválido para ${v.placa}.`);
+      if (v.tipo === "EXCLUSÃO") vf = -Math.abs(vf);
+      return [v, ac, Math.round(vf * 100) / 100 + 0];
+    });
+    upd.forEach(([v, ac, vf]) => { v.acionamento = ac; v.valor_final = vf; });
+    Object.assign(s, { status: "devolvida", numero_endosso: String(d.numero_endosso).trim(), observacao: String(d.observacao || "").trim(), devolvida_em: new Date().toISOString() });
+    save(); return { solicitacao: ser(s) };
+  }
+  function ciente(u, d, id) {
+    const s = achar(id); if (s.user_id !== u.id) fail("Solicitação não encontrada.", 404);
+    if (s.status !== "devolvida") fail("Esta solicitação não está aguardando ciência.", 409);
+    if (d.de_acordo !== true) fail("É necessário confirmar que recebeu e está de acordo com as informações.");
+    const conf = new Set((d.confirmados || []).map(Number)), dv = String(d.divergencia || "").trim();
+    if (!s.veiculos.every(v => conf.has(v.id)) && !dv) fail("Há veículos não confirmados. Descreva a divergência no campo de comunicação.");
+    s.veiculos.forEach(v => v.confirmado = conf.has(v.id));
+    Object.assign(s, { status: "ciente", ciente_em: new Date().toISOString(), divergencia: dv || null }); save(); return { solicitacao: ser(s) };
+  }
 
-  const TIPOS = ["INCLUSÃO","EXCLUSÃO","SUBSTITUIÇÃO"];
+  return { handle(method, path, d = {}) {
+    let m;
+    if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password);
+      if (!u) fail("Usuário ou senha inválidos.", 401); st.uid = u.id; save(); return { user: pub(u) }; }
+    if (path === "/logout") { st.uid = null; save(); return { ok: true }; }
+    if (path === "/me") return { user: pub(exige()) };
+    if (path === "/usuarios" && method === "GET") { exige(true); return { usuarios: st.users.map(pub) }; }
+    if (path === "/usuarios") { exige(true); const user = String(d.username || "").trim().toLowerCase();
+      if (!String(d.nome || "").trim() || !/^[a-z0-9._-]{3,30}$/.test(user)) fail("Informe o nome e um usuário de 3 a 30 caracteres (letras, números, ponto, hífen).");
+      if (String(d.password || "").length < 8) fail("A senha precisa ter pelo menos 8 caracteres.");
+      if (st.users.some(x => x.username === user)) fail("Esse usuário já existe.", 409);
+      st.users.push({ id: st.users.length + 1, username: user, nome: String(d.nome).trim(), password: d.password, role: "cliente" }); save(); return { ok: true }; }
+    if (path === "/solicitacoes" && method === "GET") { const u = exige();
+      return { solicitacoes: st.sols.filter(s => u.role === "admin" || s.user_id === u.id).map(ser).reverse() }; }
+    if (path === "/solicitacoes") return criar(exige(), d);
+    if ((m = path.match(/^\/solicitacoes\/(\d+)$/))) { const u = exige(), s = achar(m[1]);
+      if (u.role !== "admin" && s.user_id !== u.id) fail("Solicitação não encontrada.", 404); return { solicitacao: ser(s) }; }
+    if ((m = path.match(/^\/solicitacoes\/(\d+)\/devolver$/))) return devolver(d, m[1]);
+    if ((m = path.match(/^\/solicitacoes\/(\d+)\/ciente$/))) return ciente(exige(), d, m[1]);
+    fail("Rota não encontrada.", 404);
+  } };
+})();
+</script>
+<script>// Camada de acesso à API. No modo demonstração (arquivo único) usa o mock em memória.
+const API = (() => {
+  const demo = !!window.__DEMO__ || location.protocol === "file:";
+  async function call(method, path, body) {
+    if (demo) return Mock.handle(method, path, body);
+    const r = await fetch("/api" + path, { method, credentials: "same-origin",
+      headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(data.erro || "Erro " + r.status); e.status = r.status; throw e; }
+    return data;
+  }
+  return { demo, get: p => call("GET", p), post: (p, b) => call("POST", p, b || {}) };
+})();
+</script>
+<script>  const TIPOS = ["INCLUSÃO","EXCLUSÃO","SUBSTITUIÇÃO"];
   const opts = TIPOS.map(t => `<option>${t}</option>`).join("");
 
   // Etapa 1
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   function addVeiculo(v = {}) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td>
@@ -203,9 +388,12 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     ch: tr.querySelector(".ch").value.trim(), np: tr.querySelector(".np").value.trim(),
     tp: tr.querySelector(".tp").value, ps: tr.querySelector(".ps").value.trim() }));
 
+  const AVISO_EXC = "Exclusão: a placa passará por avaliação de acionamentos. Se houve acionamento, a exclusão não gera valor a devolver. O valor calculado é apenas uma estimativa até o retorno da análise.";
   // Aviso de substituição: a placa é analisada internamente antes de qualquer cálculo
   function avisoSub() {
-    const subs = lerVeiculos().filter(v => v.tp === "SUBSTITUIÇÃO");
+    const todos = lerVeiculos(), subs = todos.filter(v => v.tp === "SUBSTITUIÇÃO");
+    $("avisoExc").hidden = !todos.some(v => v.tp === "EXCLUSÃO");
+    $("avisoExc").textContent = AVISO_EXC;
     $("avisoSub").hidden = !subs.length;
     if (!subs.length) return;
     $("avisoSub").textContent = "Antes de prosseguir com a substituição a placa informada passará por análise interna e após o retorno da análise, retornamos com o cálculo da substituição.";
@@ -217,20 +405,21 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     if (!todos.length || todos.some(v => !v.mm || !v.pl || !v.ch)) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos."; return; }
     if (subs.some(v => !v.ps)) { $("erro1").textContent = "Informe a placa do veículo substituído."; return; }
     avisoSub();
-    if (!vs.length) { $("erro1").textContent = "Não há veículos para calcular agora: as substituições seguem para análise interna da placa."; return; }
     $("erro1").textContent = "";
     $("linhas").innerHTML = ""; $("mesmaCat").checked = false; $("mesmaData").checked = false;
     vs.forEach(v => {
-      const tr = document.createElement("tr"); tr.dataset.tp = v.tp;
+      const tr = document.createElement("tr"); tr.dataset.tp = v.tp; tr._v = v;
       tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}</small></td><td>${v.tp}</td>
         <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
         <td class="n r-dias">-</td><td class="n r-val">-</td>`;
       $("linhas").appendChild(tr);
     });
+    subsPend = subs; $("blocoCalc").hidden = !vs.length;
+    $("avisoExc2").hidden = !vs.some(v => v.tp === "EXCLUSÃO"); $("avisoExc2").textContent = AVISO_EXC;
     $("avisoSub2").hidden = !subs.length;
     $("avisoSub2").innerHTML = subs.length ? `Em análise interna (fora do cálculo): ${subs.map(v => esc(v.pl)).join(", ")}.` : "";
-    const ts = new Set(vs.map(v => v.tp));
-    $("termoTipo").textContent = ts.size > 1 ? "inclusão e exclusão" : ts.has("EXCLUSÃO") ? "exclusão" : "inclusão";
+    const nomes = [...new Set(todos.map(v => v.tp.toLowerCase()))];
+    $("termoTipo").textContent = nomes.length > 1 ? nomes.slice(0, -1).join(", ") + " e " + nomes.at(-1) : nomes[0];
     $("mesmaCatBox").hidden = $("mesmaDataBox").hidden = vs.length < 2;
     resetTermo(); recalcular(); etapa(2);
   };
@@ -340,7 +529,7 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
   };
 
   // Etapa 2
-  let total = null;
+  let total = null, subsPend = [], enviando = false;
   function recalcular() {
     $("erroCalc").textContent = "";
     let tv = 0, erro = "", completo = true;
@@ -355,7 +544,8 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
       } catch (e) { set("-","-"); erro = e.message; completo = false; }
     }
     $("tV").textContent = brl(tv); $("erroCalc").textContent = erro;
-    total = completo && !erro && $("linhas").children.length ? tv : null;
+    const n = $("linhas").children.length;
+    total = (n ? completo && !erro : subsPend.length > 0) ? tv : null;
     $("termoBox").hidden = total === null;
     if (total === null) resetTermo();
   }
@@ -378,10 +568,251 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     const on = $("termo").getAttribute("aria-pressed") !== "true";
     $("termo").setAttribute("aria-pressed", on); $("prosseguir").hidden = !on; $("okMsg").hidden = true;
   };
-  $("prosseguir").onclick = () => {
-    $("okMsg").hidden = false;
-    $("okMsg").textContent = `Solicitação de endosso registrada para ${$("linhas").children.length} veículo(s). Total: ${brl(total)}.`;
+  $("prosseguir").onclick = async () => {
+    if (enviando || total === null) return;
+    enviando = true; $("prosseguir").disabled = true; $("erroEnvio").textContent = "";
+    try {
+      const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, contrato: tr._v.np,
+        tipo: tr._v.tp, data_endosso: tr.querySelector(".dt").value, valor_inicial: parseFloat(tr.querySelector(".vi").value) }));
+      const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
+      const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, veiculos: [...calc, ...subs] });
+      $("prosseguir").hidden = true; $("termo").disabled = true;
+      $("okMsg").hidden = false;
+      $("okMsg").innerHTML = `<b>Solicitação nº ${s.id} registrada</b> em ${fmtDataHora(s.criado_em)} para ${s.veiculos.length} veículo(s).<br>
+        Acompanhe em <a href="#/minhas">Minhas solicitações</a>.`;
+    } catch (err) { $("erroEnvio").textContent = err.message; $("prosseguir").disabled = false; }
+    enviando = false;
   };
+
+  // Reinicia o assistente para uma nova solicitação
+  function resetWizard() {
+    $("veiculos").innerHTML = ""; addVeiculo(); $("repContrato").checked = false;
+    $("linhas").innerHTML = ""; $("vig").value = ""; $("mesmaCat").checked = $("mesmaData").checked = false;
+    $("termo").disabled = false; $("prosseguir").disabled = false; $("erroEnvio").textContent = "";
+    ["erro1","erroImp"].forEach(i => $(i).textContent = ""); $("listaErros").hidden = true; $("avisoSub").hidden = $("avisoExc").hidden = true;
+    subsPend = []; total = null; resetTermo(); etapa(1);
+  }
+</script>
+<script>// Navegação, perfis (admin/cliente) e telas do portal
+let USER = null;
+const VIEWS = ["vLogin","vNova","vMinhas","vAdmin","vUsuarios","vDetalhe"];
+const show = id => VIEWS.forEach(v => $(v).hidden = v !== id);
+const STATUS_ADMIN = { em_emissao: "Em emissão", devolvida: "Devolvida (aguardando ciência)", ciente: "Com ciência" };
+const STATUS_CLIENTE = { em_emissao: "Solicitação em processo de emissão", devolvida: "Endosso devolvido: aguardando sua ciência", ciente: "Concluída" };
+const tiposTxt = s => [...new Set(s.veiculos.map(v => v.tipo))].map(t => t[0] + t.slice(1).toLowerCase()).join(", ");
+
+function prazoTxt(s) {
+  if (s.status !== "em_emissao") return "";
+  const h = (new Date(s.prazo_em) - Date.now()) / 3600e3, a = Math.abs(h);
+  const dur = a >= 48 ? Math.floor(a / 24) + " dia(s)" : Math.max(1, Math.round(a)) + " h";
+  return h < 0 ? `<span class="tag bad">Atrasada há ${dur}</span>` : `<span class="tag warn">Restam ${dur}</span>`;
+}
+function badgeAdmin(s) {
+  const c = s.status === "em_emissao" ? "warn" : s.status === "ciente" ? "good" : "";
+  return `<span class="tag ${c}">${STATUS_ADMIN[s.status]}</span>` + (s.divergencia ? ` <span class="tag bad">Divergência</span>` : "");
+}
+
+// ---------- sessão e rotas
+function montarMenu() {
+  const itens = USER.role === "admin" ? [["#/admin", "Solicitações"], ["#/usuarios", "Usuários"]] : [["#/nova", "Nova solicitação"], ["#/minhas", "Minhas solicitações"]];
+  $("nav").innerHTML = itens.map(([h, t]) => `<a href="${h}" data-h="${h}">${t}</a>`).join("");
+  $("nav").hidden = $("sair").hidden = false;
+  $("quem").textContent = USER.nome;
+}
+function marcarMenu() { document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.dataset.h === (location.hash.split("/").slice(0, 2).join("/")))); }
+
+async function rota() {
+  if (!USER) { show("vLogin"); return; }
+  const [, p, id] = location.hash.split("/"), admin = USER.role === "admin";
+  marcarMenu();
+  try {
+    if (p === "s" && id) return await telaDetalhe(+id);
+    if (admin && p === "usuarios") return await telaUsuarios();
+    if (admin && p === "admin") return await telaAdmin();
+    if (!admin && p === "minhas") return await telaMinhas();
+    if (!admin && p === "nova") { resetWizard(); return show("vNova"); }
+    location.hash = admin ? "#/admin" : "#/nova";
+  } catch (e) {
+    if (e.status === 401) return sair(true);
+    alert(e.message);
+  }
+}
+window.addEventListener("hashchange", rota);
+
+async function entrar(user) { USER = user; montarMenu(); if (!location.hash || location.hash === "#/login") location.hash = ""; await rota(); }
+async function sair(silencioso) {
+  if (!silencioso) { try { await API.post("/logout"); } catch (e) {} }
+  USER = null; $("nav").hidden = $("sair").hidden = true; $("quem").textContent = ""; location.hash = ""; show("vLogin");
+}
+$("sair").onclick = () => sair();
+$("fLogin").onsubmit = async e => {
+  e.preventDefault(); $("erroLogin").textContent = "";
+  try { const { user } = await API.post("/login", { username: $("user").value, password: $("pass").value }); $("pass").value = ""; await entrar(user); }
+  catch (err) { $("erroLogin").textContent = err.message; }
+};
+
+// ---------- cliente: lista
+async function telaMinhas() {
+  const { solicitacoes } = await API.get("/solicitacoes");
+  $("vazioMinhas").hidden = solicitacoes.length > 0;
+  $("listaMinhas").innerHTML = solicitacoes.map(s => `<tr class="click" data-id="${s.id}"><td>${s.id}</td><td>${fmtDataHora(s.criado_em)}</td>
+    <td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td><span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span></td></tr>`).join("");
+  show("vMinhas");
+}
+for (const t of ["listaMinhas", "listaAdmin"]) $(t).onclick = e => { const tr = e.target.closest("tr[data-id]"); if (tr) location.hash = "#/s/" + tr.dataset.id; };
+
+// ---------- admin: lista e relatório
+let LISTA = [];
+async function telaAdmin() {
+  ({ solicitacoes: LISTA } = await API.get("/solicitacoes"));
+  desenharAdmin(); show("vAdmin");
+}
+function filtradas() {
+  const f = $("filtroStatus").value;
+  // abertas primeiro, pelo prazo mais próximo
+  return LISTA.filter(s => !f || s.status === f).sort((a, b) => (a.status === "em_emissao" ? 0 : 1) - (b.status === "em_emissao" ? 0 : 1) || new Date(a.prazo_em) - new Date(b.prazo_em));
+}
+function desenharAdmin() {
+  const l = filtradas(); $("vazioAdmin").hidden = l.length > 0;
+  $("listaAdmin").innerHTML = l.map(s => `<tr class="click" data-id="${s.id}"><td>${s.id}</td><td>${esc(s.usuario.nome)}<br><small>${esc(s.usuario.username)}</small></td>
+    <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td></tr>`).join("");
+}
+$("filtroStatus").onchange = desenharAdmin;
+$("csv").onclick = () => {
+  const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const cab = ["Nº","Usuário","Nome","Data da solicitação","Prazo","Situação","Nº endosso","Devolvida em","Ciência em","Divergência","Placa","Tipo","Contrato","Valor calculado","Valor final","Acionamento"];
+  const linhas = [cab];
+  filtradas().forEach(s => s.veiculos.forEach(v => linhas.push([s.id, s.usuario.username, s.usuario.nome, fmtDataHora(s.criado_em), fmtDataHora(s.prazo_em), STATUS_ADMIN[s.status],
+    s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em), s.divergencia, v.placa, v.tipo, v.contrato,
+    v.valor_calculado, v.valor_final, v.acionamento ? "Sim" : "Não"])));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
+  a.download = "solicitacoes-endossos.csv"; a.click();
+};
+
+// ---------- admin: usuários
+async function telaUsuarios() {
+  const { usuarios } = await API.get("/usuarios");
+  $("listaUsuarios").innerHTML = usuarios.map(u => `<tr><td>${esc(u.nome)}</td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administrador" : "Cliente"}</td></tr>`).join("");
+  show("vUsuarios");
+}
+$("fUsuario").onsubmit = async e => {
+  e.preventDefault(); $("erroUsuario").textContent = ""; $("okUsuario").hidden = true;
+  try {
+    await API.post("/usuarios", { nome: $("uNome").value, username: $("uUser").value, password: $("uPass").value });
+    $("okUsuario").hidden = false; $("okUsuario").textContent = `Usuário ${$("uUser").value} criado.`; e.target.reset(); await telaUsuarios();
+  } catch (err) { $("erroUsuario").textContent = err.message; }
+};
+
+// ---------- detalhe: admin devolve; cliente dá ciência
+async function telaDetalhe(id) {
+  const { solicitacao: s } = await API.get("/solicitacoes/" + id);
+  const admin = USER.role === "admin";
+  const cab = `<div class="topo"><h2>Solicitação nº ${s.id}</h2>${admin ? badgeAdmin(s) + " " + prazoTxt(s) : `<span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span>`}</div>
+    <div class="kv">
+      <div><small>Solicitante</small>${esc(s.usuario.nome)}</div>
+      <div><small>Data da solicitação</small>${fmtDataHora(s.criado_em)}</div>
+      ${admin ? `<div><small>Prazo de retorno (48h úteis)</small>${fmtDataHora(s.prazo_em)}</div>` : ""}
+      ${s.vigencia ? `<div><small>Vigência inicial</small>${fmtData(s.vigencia)}</div>` : ""}
+      ${s.numero_endosso ? `<div><small>Nº do endosso</small>${esc(s.numero_endosso)}</div>` : ""}
+      ${s.devolvida_em ? `<div><small>Devolvido em</small>${fmtDataHora(s.devolvida_em)}</div>` : ""}
+      ${s.ciente_em ? `<div><small>Ciência em</small>${fmtDataHora(s.ciente_em)}</div>` : ""}
+    </div>`;
+  let corpo;
+  if (admin) corpo = s.status === "em_emissao" ? formDevolver(s) : tabelaFinal(s, true);
+  else if (s.status === "em_emissao") corpo = `<div class="aviso"><b>Solicitação em processo de emissão.</b></div>${tabelaSolicitada(s)}`;
+  else if (s.status === "devolvida") corpo = formCiente(s);
+  else corpo = tabelaFinal(s, true);
+  $("detalhe").innerHTML = `<div class="card">${cab}${corpo}</div>`;
+  if (admin && s.status === "em_emissao") ligarDevolver(s);
+  if (!admin && s.status === "devolvida") ligarCiente(s);
+  show("vDetalhe");
+}
+
+const tipoTag = v => v.tipo[0] + v.tipo.slice(1).toLowerCase();
+function tabelaSolicitada(s) {
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
+    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}</td><td>${esc(v.chassi)}</td><td>${esc(v.contrato)}</td><td>${tipoTag(v)}</td><td>${esc(v.placa_substituida || "-")}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function valorTxt(v) {
+  if (v.tipo === "EXCLUSÃO" && v.acionamento) return `${brl(0)} <span class="tag bad">Acionamento: sem restituição</span>`;
+  return brl(v.valor_final);
+}
+function tabelaFinal(s, obs) {
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor</th>${s.status === "ciente" ? "<th>Confere</th>" : ""}</tr></thead><tbody>${
+    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td>
+      <td class="n">${valorTxt(v)}</td>${s.status === "ciente" ? `<td>${v.confirmado ? "Sim" : "<b>Não</b>"}</td>` : ""}</tr>`).join("")}</tbody>
+    <tfoot><tr><td colspan="4" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td>${s.status === "ciente" ? "<td></td>" : ""}</tr></tfoot></table></div>
+    ${obs && s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}
+    ${s.divergencia ? `<div class="aviso"><b>Divergência comunicada pelo cliente:</b><br>${esc(s.divergencia)}</div>` : ""}
+    ${s.status === "ciente" && !s.divergencia ? `<div class="ok">O cliente declarou ter recebido e estar de acordo com as informações.</div>` : ""}`;
+}
+
+// admin: devolver o endosso
+function formDevolver(s) {
+  const linhas = s.veiculos.map(v => {
+    const exc = v.tipo === "EXCLUSÃO", sub = v.tipo === "SUBSTITUIÇÃO";
+    return `<tr data-vid="${v.id}" data-tipo="${v.tipo}"><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${sub ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td>
+      <td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${sub ? "-" : brl(v.valor_calculado)}</td>
+      <td>${exc ? '<label class="chkl" style="margin:0"><input type="checkbox" class="ac"> Teve acionamento</label>' : "-"}</td>
+      <td><input class="vf" type="number" step="0.01" style="min-width:120px" value="${v.valor_calculado ?? ""}" ${sub ? 'placeholder="informar"' : ""}></td></tr>`;
+  }).join("");
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
+    <tbody>${linhas}</tbody><tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
+    <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa.</div>
+    <div class="grid"><div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div></div>
+    <label for="obs">Observação para o cliente (opcional)</label><textarea id="obs"></textarea>
+    <button class="btn" id="devolver">Devolver endosso ao cliente</button><div class="erro" id="erroDev"></div>`;
+}
+function ligarDevolver(s) {
+  const trs = () => [...document.querySelectorAll("#detalhe tbody tr")];
+  const total = () => { let t = 0; trs().forEach(tr => { const x = parseFloat(tr.querySelector(".vf").value); if (!isNaN(x)) t += x; }); $("totFinal").textContent = brl(t); };
+  trs().forEach(tr => {
+    const ac = tr.querySelector(".ac"), vf = tr.querySelector(".vf");
+    if (ac) ac.onchange = () => { vf.disabled = ac.checked; if (ac.checked) vf.value = "0"; else vf.value = s.veiculos.find(v => v.id == tr.dataset.vid).valor_calculado; total(); };
+    vf.oninput = total;
+  });
+  total();
+  $("devolver").onclick = async () => {
+    $("erroDev").textContent = "";
+    try {
+      await API.post(`/solicitacoes/${s.id}/devolver`, { numero_endosso: $("nEnd").value, observacao: $("obs").value,
+        veiculos: trs().map(tr => ({ id: +tr.dataset.vid, acionamento: !!tr.querySelector(".ac")?.checked, valor_final: tr.querySelector(".vf").value })) });
+      await telaDetalhe(s.id);
+    } catch (e) { $("erroDev").textContent = e.message; }
+  };
+}
+
+// cliente: conferir e dar ciência
+function formCiente(s) {
+  const linhas = s.veiculos.map(v => `<tr><td><input type="checkbox" class="cf" value="${v.id}" checked></td><td>${esc(v.marca_modelo)}</td>
+    <td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${valorTxt(v)}</td></tr>`).join("");
+  const sens = s.veiculos.some(v => v.tipo !== "INCLUSÃO");
+  return `<div class="aviso"><b>Seu endosso foi emitido.</b> Confira as informações abaixo${sens ? ", principalmente os veículos de exclusão e substituição" : ""}.</div>
+    <div class="tw"><table><thead><tr><th>Confere</th><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor</th></tr></thead><tbody>${linhas}</tbody>
+    <tfoot><tr><td colspan="5" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td></tr></tfoot></table></div>
+    ${s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}
+    <label for="div">Comunicar divergência (se algum veículo não deveria constar, ou se faltou algum, descreva aqui)</label>
+    <textarea id="div" placeholder="Se desmarcar algum veículo acima, explique aqui."></textarea>
+    <label class="chkl"><input type="checkbox" id="deAcordo"> Declaro que recebi e visualizei as informações acima e estou de acordo com o que foi calculado.</label>
+    <button class="btn" id="confirmar">Confirmar ciência</button><div class="erro" id="erroCi"></div>`;
+}
+function ligarCiente(s) {
+  $("confirmar").onclick = async () => {
+    $("erroCi").textContent = "";
+    try {
+      await API.post(`/solicitacoes/${s.id}/ciente`, { de_acordo: $("deAcordo").checked, divergencia: $("div").value,
+        confirmados: [...document.querySelectorAll(".cf:checked")].map(c => +c.value) });
+      await telaDetalhe(s.id);
+    } catch (e) { $("erroCi").textContent = e.message; }
+  };
+}
+
+// ---------- início
+(async () => {
+  $("demoInfo").hidden = !API.demo;
+  try { const { user } = await API.get("/me"); await entrar(user); } catch (e) { show("vLogin"); }
+})();
 </script>
 </body>
 </html>

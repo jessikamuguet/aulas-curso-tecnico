@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal de Movimentações | Endossos</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <img id="logo" src="logo.webp" alt="helppi.me">
+  <b>Portal de Movimentações | Endossos</b>
+  <nav id="nav" hidden></nav>
+  <span class="quem" id="quem"></span>
+  <button id="sair" hidden>Sair</button>
+</header>
+<div class="demo" id="demoInfo" hidden>Modo demonstração: os dados ficam só neste navegador. Acessos de teste: <b>admin / admin123</b> (interno) e <b>cliente / cliente123</b>.</div>
+<main>
+  <section id="vLogin" class="card login" hidden>
+    <h1>Acesso</h1>
+    <form id="fLogin">
+      <label for="user">Usuário</label><input id="user" autocomplete="username" required>
+      <label for="pass">Senha</label><input id="pass" type="password" autocomplete="current-password" required>
+      <button class="btn">Entrar</button>
+      <div class="erro" id="erroLogin"></div>
+    </form>
+  </section>
+
+  <!-- Cliente: nova solicitação (assistente) -->
+  <section id="vNova" hidden>
+    <!-- Etapa 1: identificação dos veículos -->
+    <div id="etapa1" class="card">
+      <h2>1. Veículos</h2>
+      <div class="imp">
+        <label for="arq" style="margin:0">Importar planilha (.xlsx ou .csv)</label>
+        <input id="arq" type="file" accept=".xlsx,.csv">
+        <label for="tipoImp" style="margin:0">Tipo de endosso dos veículos importados</label>
+        <select id="tipoImp" style="width:auto"><option>INCLUSÃO</option><option>EXCLUSÃO</option></select>
+        <button type="button" class="btn sec mini" id="modelo">Baixar modelo (CSV)</button>
+        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB e MOD (ou Ano fab/Ano mod, ou Ano fabricação/Ano modelo, em colunas separadas), PLACA, CHASSI.</small>
+        <div class="erro" id="erroImp" style="flex-basis:100%"></div>
+        <ul class="lista-erros" id="listaErros" hidden></ul>
+      </div>
+      <div class="aviso" id="avisoExc" hidden></div>
+      <div class="aviso" id="avisoSub" hidden></div>
+      <div class="tw"><table>
+        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
+        <tbody id="veiculos"></tbody>
+      </table></div>
+      <label class="chkl"><input type="checkbox" id="repContrato"> Usar o mesmo Nº Contrato para todos os veículos (repete o do primeiro da lista)</label>
+      <button class="btn sec" id="addV">+ Adicionar veículo</button>
+      <button class="btn" id="irCalculo">Continuar para o cálculo</button>
+      <div class="erro" id="erro1"></div>
+    </div>
+
+    <!-- Etapa 2: cálculo, termo e confirmação -->
+    <div id="etapa2" hidden>
+      <div class="card">
+        <h2>2. Cálculo</h2>
+        <div id="blocoCalc">
+        <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
+        <label class="chkl" id="mesmaCatBox" hidden><input type="checkbox" id="mesmaCat"> Todos os veículos são da mesma categoria? Marque para repetir o valor inicial do primeiro veículo em todos</label>
+        <label class="chkl" id="mesmaDataBox" hidden><input type="checkbox" id="mesmaData"> Usar a mesma data do endosso para todos os veículos (repete a data do primeiro)</label>
+        <div class="tw"><table>
+          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Dias</th><th>Valor</th></tr></thead>
+          <tbody id="linhas"></tbody>
+          <tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
+        </table></div>
+        </div>
+        <div class="aviso" id="avisoExc2" hidden></div>
+        <div class="aviso" id="avisoSub2" hidden></div>
+        <div class="erro" id="erroCalc"></div>
+        <button class="btn sec" id="voltar">← Voltar</button>
+      </div>
+      <div class="card" id="termoBox" hidden>
+        <button type="button" class="termo" id="termo" aria-pressed="false">
+          <span class="chk"></span>
+          <span>Estou de acordo com as informações aqui prestadas e solicito a <span id="termoTipo">inclusão</span> dos veículos aqui informados</span>
+        </button>
+        <button class="btn" id="prosseguir" hidden>Prosseguir com endosso</button>
+        <div class="erro" id="erroEnvio"></div>
+        <div class="ok" id="okMsg" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Cliente: minhas solicitações -->
+  <section id="vMinhas" class="card" hidden>
+    <h2>Minhas solicitações</h2>
+    <div class="tw"><table>
+      <thead><tr><th>Nº</th><th>Solicitado em</th><th>Tipos</th><th>Veículos</th><th>Situação</th></tr></thead>
+      <tbody id="listaMinhas"></tbody>
+    </table></div>
+    <div id="vazioMinhas" class="quem" hidden>Nenhuma solicitação ainda. Use "Nova solicitação".</div>
+  </section>
+
+  <!-- Admin: solicitações -->
+  <section id="vAdmin" class="card" hidden>
+    <div class="topo">
+      <h2>Solicitações de endosso</h2>
+      <select id="filtroStatus" style="width:auto">
+        <option value="">Todas</option><option value="em_emissao">Em emissão</option>
+        <option value="devolvida">Devolvidas (aguardando ciência)</option><option value="ciente">Com ciência</option>
+      </select>
+      <button class="btn sec mini" id="csv">Exportar CSV</button>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Nº</th><th>Solicitante</th><th>Solicitado em</th><th>Prazo (48h úteis)</th><th>Tipos</th><th>Veículos</th><th>Situação</th></tr></thead>
+      <tbody id="listaAdmin"></tbody>
+    </table></div>
+    <div id="vazioAdmin" class="quem" hidden>Nenhuma solicitação.</div>
+  </section>
+
+  <!-- Admin: usuários -->
+  <section id="vUsuarios" hidden>
+    <div class="card">
+      <h2>Novo usuário (cliente)</h2>
+      <form id="fUsuario" class="grid">
+        <div><label for="uNome">Nome</label><input id="uNome" required></div>
+        <div><label for="uUser">Usuário</label><input id="uUser" required autocomplete="off"></div>
+        <div><label for="uPass">Senha (mín. 8 caracteres)</label><input id="uPass" type="password" required minlength="8" autocomplete="new-password"></div>
+        <div style="align-self:end"><button class="btn" style="margin:0">Criar usuário</button></div>
+      </form>
+      <div class="erro" id="erroUsuario"></div><div class="ok" id="okUsuario" hidden></div>
+    </div>
+    <div class="card"><h2>Usuários</h2>
+      <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- Detalhe / devolução / ciência -->
+  <section id="vDetalhe" hidden><div id="detalhe"></div></section>
+</main>
+<script>window.__DEMO__ = false;</script>
+<script src="prorata.js"></script>
+<script src="common.js"></script>
+<script src="mock.js"></script>
+<script src="api.js"></script>
+<script src="wizard.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

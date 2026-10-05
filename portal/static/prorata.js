@@ -32,4 +32,15 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
   return { dias, custoDia: novo.custoDia, custoDevido: novo.custoDevido, valor };
 }
 
-if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso };
+
+
+// Prazo de retorno: 2 dias úteis (48h úteis) a partir da solicitação, horário de Brasília.
+// Sáb/dom não contam (pedido no fim de semana começa na segunda 00:00); feriados não são considerados.
+function prazoDiasUteis(inicio, dias = 2) {
+  let d = new Date(inicio.getTime() - 3 * 3600e3); // relógio de Brasília nos campos UTC
+  const w0 = d.getUTCDay();
+  if (w0 === 0 || w0 === 6) d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + (w0 === 6 ? 2 : 1)));
+  for (let n = 0; n < dias;) { d = new Date(d.getTime() + 86400e3); const w = d.getUTCDay(); if (w !== 0 && w !== 6) n++; }
+  return new Date(d.getTime() + 3 * 3600e3);
+}
+if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso, prazoDiasUteis };
