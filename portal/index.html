@@ -28,6 +28,13 @@
   th,td { padding:6px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
   td input { min-width:90px; } td select { min-width:120px; } td.n { text-align:right; }
   tfoot td { font-weight:700; color:var(--brand); } .erro { color:#d33; margin-top:8px; }
+  .btn.sec { background:transparent; color:var(--text); border:1px solid var(--line); margin-right:8px; }
+  .termo { display:flex; gap:12px; align-items:flex-start; text-align:left; width:100%; padding:14px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+  .termo .chk { flex:none; width:22px; height:22px; border:2px solid var(--brand); border-radius:6px; display:grid; place-items:center; }
+  .termo[aria-pressed="true"] { border-color:var(--brand); }
+  .termo[aria-pressed="true"] .chk { background:var(--brand); }
+  .termo[aria-pressed="true"] .chk::after { content:"✓"; color:#000; font-weight:700; }
+  .ok { margin-top:14px; padding:14px; border-radius:8px; border:1px solid var(--accent); }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -49,22 +56,39 @@
   </section>
 
   <section id="calc" hidden>
-    <div class="card">
-      <h2>Apólice</h2>
-      <div class="grid">
-        <div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div>
-        <div><label for="com">Comissão (%)</label><input id="com" type="number" step="0.01" min="0" max="100" value="35"></div>
-      </div>
-    </div>
-    <div class="card">
-      <h2>Endossos</h2>
+    <!-- Etapa 1: identificação dos veículos -->
+    <div id="etapa1" class="card">
+      <h2>1. Veículos</h2>
       <div class="tw"><table>
-        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Proposta</th><th>Nº Endosso</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Dias</th><th>Custo dia</th><th>C. devido</th><th>Valor</th><th>Comissão</th><th></th></tr></thead>
-        <tbody id="linhas"></tbody>
-        <tfoot><tr><td colspan="11" class="n">TOTAL</td><td class="n" id="tV">-</td><td class="n" id="tC">-</td><td></td></tr></tfoot>
+        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Proposta</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
+        <tbody id="veiculos"></tbody>
       </table></div>
-      <button class="btn" id="add">+ Adicionar linha</button>
-      <div class="erro" id="erroCalc"></div>
+      <button class="btn sec" id="addV">+ Adicionar veículo</button>
+      <button class="btn" id="irCalculo">Continuar para o cálculo</button>
+      <div class="erro" id="erro1"></div>
+    </div>
+
+    <!-- Etapa 2: cálculo, termo e confirmação -->
+    <div id="etapa2" hidden>
+      <div class="card">
+        <h2>2. Cálculo</h2>
+        <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
+        <div class="tw"><table>
+          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Valor inicial do substituído</th><th>Dias</th><th>Custo dia</th><th>C. devido</th><th>Valor</th></tr></thead>
+          <tbody id="linhas"></tbody>
+          <tfoot><tr><td colspan="8" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
+        </table></div>
+        <div class="erro" id="erroCalc"></div>
+        <button class="btn sec" id="voltar">← Voltar</button>
+      </div>
+      <div class="card" id="termoBox" hidden>
+        <button type="button" class="termo" id="termo" aria-pressed="false">
+          <span class="chk"></span>
+          <span>Estou de acordo com as informações aqui prestadas e solicito a inclusão dos veículos aqui informados</span>
+        </button>
+        <button class="btn" id="prosseguir" hidden>Prosseguir com endosso</button>
+        <div class="ok" id="okMsg" hidden></div>
+      </div>
     </div>
   </section>
 </main>
@@ -85,35 +109,77 @@
   };
   $("sair").onclick = () => { sessionStorage.removeItem("logado"); mostrar(false); };
 
-  const campos = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td><td><input class="ne"></td>
-    <td><select class="tp"><option>INCLUSÃO</option><option>EXCLUSÃO</option></select></td>
-    <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
-    <td class="n r-dias">-</td><td class="n r-cd">-</td><td class="n r-dev">-</td><td class="n r-val">-</td><td class="n r-com">-</td>
-    <td><button class="x" title="Remover">✕</button></td>`;
-  function addLinha() {
-    const tr = document.createElement("tr"); tr.innerHTML = campos; $("linhas").appendChild(tr);
-    tr.querySelector(".x").onclick = () => { tr.remove(); recalcular(); };
+  const TIPOS = ["INCLUSÃO","EXCLUSÃO","SUBSTITUIÇÃO"];
+  const opts = TIPOS.map(t => `<option>${t}</option>`).join("");
+
+  // Etapa 1
+  function addVeiculo() {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="np"></td>
+      <td><select class="tp">${opts}</select></td><td><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
+    tr.querySelector(".tp").onchange = e => { tr.querySelector(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; };
+    tr.querySelector(".x").onclick = () => tr.remove();
+    $("veiculos").appendChild(tr);
   }
+  $("addV").onclick = addVeiculo;
+  addVeiculo();
+
+  function etapa(n) { $("etapa1").hidden = n !== 1; $("etapa2").hidden = n !== 2; }
+  $("irCalculo").onclick = () => {
+    const vs = [...$("veiculos").children].map(tr => ({
+      mm: tr.querySelector(".mm").value.trim(), pl: tr.querySelector(".pl").value.trim(),
+      ch: tr.querySelector(".ch").value.trim(), np: tr.querySelector(".np").value.trim(),
+      tp: tr.querySelector(".tp").value, ps: tr.querySelector(".ps").value.trim() }));
+    if (!vs.length || vs.some(v => !v.mm || !v.pl || !v.ch)) { $("erro1").textContent = "Preencha marca/modelo, placa e chassi de todos os veículos."; return; }
+    if (vs.some(v => v.tp === "SUBSTITUIÇÃO" && !v.ps)) { $("erro1").textContent = "Informe a placa do veículo substituído."; return; }
+    $("erro1").textContent = "";
+    $("linhas").innerHTML = "";
+    vs.forEach(v => {
+      const tr = document.createElement("tr"); tr.dataset.tp = v.tp;
+      tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}${v.tp==="SUBSTITUIÇÃO" ? " (substitui "+esc(v.ps)+")" : ""}</small></td><td>${v.tp}</td>
+        <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
+        <td>${v.tp==="SUBSTITUIÇÃO" ? '<input class="vs" type="number" step="0.01" min="0">' : "—"}</td>
+        <td class="n r-dias">-</td><td class="n r-cd">-</td><td class="n r-dev">-</td><td class="n r-val">-</td>`;
+      $("linhas").appendChild(tr);
+    });
+    resetTermo(); recalcular(); etapa(2);
+  };
+  $("voltar").onclick = () => etapa(1);
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  // Etapa 2
+  let total = null;
   function recalcular() {
     $("erroCalc").textContent = "";
-    let tv = 0, tc = 0, erro = "";
+    let tv = 0, erro = "", completo = true;
     const vig = $("vig").value ? parse($("vig").value) : null;
-    const pct = (parseFloat($("com").value) || 0) / 100;
     for (const tr of $("linhas").children) {
       const q = s => tr.querySelector(s), data = q(".dt").value, vi = parseFloat(q(".vi").value);
-      const set = (a,b,c,d,e) => { q(".r-dias").textContent=a; q(".r-cd").textContent=b; q(".r-dev").textContent=c; q(".r-val").textContent=d; q(".r-com").textContent=e; };
-      if (!vig || !data || isNaN(vi)) { set("-","-","-","-","-"); continue; }
+      const vsEl = q(".vs"), vs = vsEl ? parseFloat(vsEl.value) : 0;
+      const set = (a,b,c,d) => { q(".r-dias").textContent=a; q(".r-cd").textContent=b; q(".r-dev").textContent=c; q(".r-val").textContent=d; };
+      if (!vig || !data || isNaN(vi) || (vsEl && isNaN(vs))) { set("-","-","-","-"); completo = false; continue; }
       try {
-        const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, comissao: pct, tipo: q(".tp").value });
-        set(r.dias, brl(r.custoDia), brl(r.custoDevido), brl(r.valor), brl(r.comissao));
-        tv += r.valor; tc += r.comissao;
-      } catch (e) { set("-","-","-","-","-"); erro = e.message; }
+        const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, valorSubstituido: vs, tipo: tr.dataset.tp });
+        set(r.dias, brl(r.custoDia), brl(r.custoDevido), brl(r.valor)); tv += r.valor;
+      } catch (e) { set("-","-","-","-"); erro = e.message; completo = false; }
     }
-    $("tV").textContent = brl(tv); $("tC").textContent = brl(tc); $("erroCalc").textContent = erro;
+    $("tV").textContent = brl(tv); $("erroCalc").textContent = erro;
+    total = completo && !erro && $("linhas").children.length ? tv : null;
+    $("termoBox").hidden = total === null;
+    if (total === null) resetTermo();
   }
-  $("add").onclick = addLinha;
-  $("calc").addEventListener("input", recalcular);
-  addLinha();
+  $("etapa2").addEventListener("input", recalcular);
+
+  // Termo e prosseguir
+  function resetTermo() { $("termo").setAttribute("aria-pressed","false"); $("prosseguir").hidden = true; $("okMsg").hidden = true; }
+  $("termo").onclick = () => {
+    const on = $("termo").getAttribute("aria-pressed") !== "true";
+    $("termo").setAttribute("aria-pressed", on); $("prosseguir").hidden = !on; $("okMsg").hidden = true;
+  };
+  $("prosseguir").onclick = () => {
+    $("okMsg").hidden = false;
+    $("okMsg").textContent = `Solicitação de endosso registrada para ${$("linhas").children.length} veículo(s). Total: ${brl(total)}.`;
+  };
 </script>
 </body>
 </html>

@@ -2,8 +2,10 @@
 // dias = data do endosso - vigência inicial
 // custo dia = valor inicial / 365
 // custo devido = custo dia * dias
-// valor = valor inicial - custo devido (negativo em exclusões = estorno)
-// comissão = valor * % comissão
+// saldo a vencer = valor inicial - custo devido
+// INCLUSÃO: valor = saldo do veículo incluído
+// EXCLUSÃO: valor = -(saldo do veículo excluído)  (estorno)
+// SUBSTITUIÇÃO: valor = saldo do veículo novo - saldo do veículo substituído
 const BASE_DIAS = 365;
 
 function diasEntre(vigencia, data) {
@@ -12,15 +14,22 @@ function diasEntre(vigencia, data) {
   return Math.round(ms / 86400000);
 }
 
-function calcularEndosso({ vigencia, data, valorInicial, comissao, tipo }) {
+function saldoProRata(valorInicial, dias) {
+  const custoDia = valorInicial / BASE_DIAS;
+  const custoDevido = custoDia * dias;
+  return { custoDia, custoDevido, saldo: valorInicial - custoDevido };
+}
+
+function calcularEndosso({ vigencia, data, valorInicial, valorSubstituido = 0, tipo }) {
   const dias = diasEntre(vigencia, data);
   if (dias < 0) throw new Error("A data do endosso é anterior à vigência inicial.");
   if (dias > BASE_DIAS) throw new Error("A data do endosso passa de 365 dias da vigência.");
-  const custoDia = valorInicial / BASE_DIAS;
-  const custoDevido = custoDia * dias;
-  let valor = valorInicial - custoDevido;
-  if (tipo === "EXCLUSÃO") valor = -valor;
-  return { dias, custoDia, custoDevido, valor, comissao: valor * comissao };
+  const novo = saldoProRata(valorInicial, dias);
+  let valor;
+  if (tipo === "EXCLUSÃO") valor = -novo.saldo;
+  else if (tipo === "SUBSTITUIÇÃO") valor = novo.saldo - saldoProRata(valorSubstituido, dias).saldo;
+  else valor = novo.saldo;
+  return { dias, custoDia: novo.custoDia, custoDevido: novo.custoDevido, valor };
 }
 
-if (typeof module !== "undefined") module.exports = { diasEntre, calcularEndosso };
+if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso };
