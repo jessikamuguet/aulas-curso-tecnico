@@ -11,6 +11,20 @@ from flask import Flask, Response, g, jsonify, request, session, send_from_direc
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _carregar_config():
+    """Lê o arquivo config.env (CHAVE=valor, uma por linha) ao lado do app. Variáveis já definidas no sistema têm prioridade."""
+    caminho = os.path.join(BASE, "config.env")
+    if os.path.exists(caminho):
+        for linha in open(caminho, encoding="utf-8-sig"):
+            linha = linha.strip()
+            if linha and not linha.startswith("#") and "=" in linha:
+                chave, valor = linha.split("=", 1)
+                os.environ.setdefault(chave.strip(), valor.strip().strip('"'))
+
+
+_carregar_config()
 DB_PATH = os.environ.get("PORTAL_DB", os.path.join(BASE, "portal.db"))
 SP = timezone(timedelta(hours=-3))  # horário de Brasília (sem horário de verão)
 BASE_DIAS = 365
@@ -90,12 +104,17 @@ def init_db():
         if col not in {r[1] for r in con.execute('PRAGMA table_info(anexos)')}:
             con.execute(f'ALTER TABLE anexos ADD COLUMN {col} TEXT')
     if not con.execute("SELECT 1 FROM users WHERE role='admin'").fetchone():
-        senha = os.environ.get("ADMIN_PASSWORD") or secrets.token_urlsafe(9)
+        senha = os.environ.get("ADMIN_PASSWORD")
+        gerada = not senha
+        senha = senha or secrets.token_urlsafe(9)
         con.execute("INSERT INTO users(username,nome,password_hash,role) VALUES('admin','Administrador',?, 'admin')",
                     (generate_password_hash(senha),))
         con.commit()
-        print(f"\n>>> Usuário admin criado. Login: admin | Senha: {senha}\n"
-              ">>> Guarde esta senha (ela não será mostrada de novo).\n")
+        if gerada:  # só mostra a senha quando ela foi gerada aqui; se veio da configuração, nunca é impressa
+            print(f"\n>>> Usuário admin criado. Login: admin | Senha: {senha}\n"
+                  ">>> Guarde esta senha (ela não será mostrada de novo).\n")
+        else:
+            print("Usuário admin criado com a senha definida em ADMIN_PASSWORD.")
     con.close()
 
 

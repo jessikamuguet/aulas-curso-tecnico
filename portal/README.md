@@ -22,6 +22,8 @@ Em produção use HTTPS e defina `HTTPS=1` (cookie seguro) e `SECRET_KEY`. Rode 
 texto puro). Serve para conhecer o fluxo: **admin / admin123** e **cliente / cliente123**. Não use em produção.
 Para regerar depois de mudar algo em `static/`: `python build_demo.py`.
 
+**Hospedando no Windows?** Siga o [PASSO-A-PASSO-WINDOWS.md](PASSO-A-PASSO-WINDOWS.md) (instalador, início automático e backup prontos).
+
 ## Fluxo
 
 1. **Admin** cria os usuários dos clientes (menu *Usuários*).

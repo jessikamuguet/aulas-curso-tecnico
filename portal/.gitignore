@@ -1,3 +1,6 @@
 portal.db
 .secret_key
 __pycache__/
+config.env
+backups/
+venv/
