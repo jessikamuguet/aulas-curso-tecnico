@@ -26,7 +26,9 @@ Para regerar depois de mudar algo em `static/`: `python build_demo.py`.
 
 ## Fluxo
 
-1. **Admin** cria os usuários dos clientes (menu *Usuários*).
+1. **Admin** cria os usuários (menu *Usuários*): clientes e **até 5 administradores ativos**. Cada administrador tem login próprio;
+   desativar um libera a vaga (o histórico é mantido). Cada devolução registra **quem a fez** (lista, detalhe e CSV, só para
+   administradores; o cliente não vê).
 2. **Cliente** entra, em *Nova solicitação* cadastra/importa os veículos (planilha no modelo FROTA), vê o cálculo, marca o
    termo de acordo e clica em *Prosseguir com endosso*. A solicitação é gravada com usuário e data/hora.
 3. **Admin** vê tudo em *Solicitações* (quem pediu, quando, prazo de 48h úteis, atrasadas em destaque, filtro e CSV),

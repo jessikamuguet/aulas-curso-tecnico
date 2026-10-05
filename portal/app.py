@@ -33,6 +33,7 @@ EXPEDIENTE = (8, 17)  # horas úteis: das 08:00 às 17:00, seg a sex
 TIPOS = ("INCLUSÃO", "EXCLUSÃO", "SUBSTITUIÇÃO")
 MAX_PDF = 10 * 1024 * 1024  # 10 MB por anexo
 ANEXOS = {"endosso": "Endosso", "boleto": "Boleto"}
+MAX_ADMINS = 5  # no máximo 5 administradores ativos
 SEM_PLACA = "SEM PLACA"  # veículo 0 km ainda sem placa (só inclusão); identificado pelo chassi
 MAX_PLANILHA = 5 * 1024 * 1024  # importação de .xls
 
@@ -61,12 +62,12 @@ app.config.update(MAX_CONTENT_LENGTH=25 * 1024 * 1024, SESSION_COOKIE_HTTPONLY=T
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, nome TEXT NOT NULL,
-  password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('admin','cliente')));
+  password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('admin','cliente')), ativo INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS solicitacoes (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
   criado_em TEXT NOT NULL, prazo_em TEXT NOT NULL, vigencia TEXT,
   status TEXT NOT NULL DEFAULT 'em_emissao', numero_endosso TEXT, observacao TEXT,
-  devolvida_em TEXT, ciente_em TEXT, divergencia TEXT);
+  devolvida_em TEXT, ciente_em TEXT, divergencia TEXT, devolvida_por INTEGER REFERENCES users(id));
 CREATE TABLE IF NOT EXISTS veiculos (
   id INTEGER PRIMARY KEY, solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes(id),
   marca_modelo TEXT, placa TEXT, chassi TEXT, contrato TEXT, tipo TEXT,
@@ -102,6 +103,10 @@ def init_db():
     for col in ('ano_fab', 'ano_mod'):  # bancos criados antes dos anos do veículo
         if col not in {r[1] for r in con.execute('PRAGMA table_info(veiculos)')}:
             con.execute(f'ALTER TABLE veiculos ADD COLUMN {col} INTEGER')
+    if 'ativo' not in {r[1] for r in con.execute('PRAGMA table_info(users)')}:  # bancos criados antes da gestão de administradores
+        con.execute('ALTER TABLE users ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1')
+    if 'devolvida_por' not in {r[1] for r in con.execute('PRAGMA table_info(solicitacoes)')}:
+        con.execute('ALTER TABLE solicitacoes ADD COLUMN devolvida_por INTEGER')
     for col in ('sp_url', 'sp_erro'):  # bancos criados antes da integração com SharePoint
         if col not in {r[1] for r in con.execute('PRAGMA table_info(anexos)')}:
             con.execute(f'ALTER TABLE anexos ADD COLUMN {col} TEXT')
@@ -269,7 +274,15 @@ def usuario():
     uid = session.get("uid")
     if not uid:
         return None
-    return db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    u = db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    if u and not u["ativo"]:  # usuário desativado perde o acesso na hora, mesmo com sessão aberta
+        session.clear()
+        return None
+    return u
+
+
+def admins_ativos():
+    return db().execute("SELECT count(*) FROM users WHERE role='admin' AND ativo=1").fetchone()[0]
 
 
 def exige_login(admin=False):
@@ -292,7 +305,13 @@ def serializa(s):
     if not (quem and quem["role"] == "admin"):  # cliente não vê dados internos do SharePoint
         for x in anexos:
             x.pop("sp_url"), x.pop("sp_erro")
-    return dict(s, usuario=dict(u), veiculos=vs, anexos=anexos, total_calculado=soma("valor_calculado"), total_final=soma("valor_final"))
+    r = dict(s, usuario=dict(u), veiculos=vs, anexos=anexos, total_calculado=soma("valor_calculado"), total_final=soma("valor_final"))
+    if quem and quem["role"] == "admin":
+        resp = db().execute("SELECT id,nome,username FROM users WHERE id=?", (s["devolvida_por"],)).fetchone() if s["devolvida_por"] else None
+        r["devolvida_por"] = dict(resp) if resp else None
+    else:
+        r.pop("devolvida_por", None)  # o cliente não vê qual administrador atendeu
+    return r
 
 
 # ---------------------------------------------------------------- auth
@@ -308,7 +327,7 @@ def login():
     if ate > time.time():
         return erro("Muitas tentativas. Aguarde um minuto e tente de novo.", 429)
     u = db().execute("SELECT * FROM users WHERE username=?", (nome,)).fetchone()
-    if not u or not check_password_hash(u["password_hash"], senha):
+    if not u or not u["ativo"] or not check_password_hash(u["password_hash"], senha):
         tent += 1
         _falhas[chave] = (tent, time.time() + 60 if tent >= 5 else 0)
         return erro("Usuário ou senha inválidos.", 401)
@@ -340,8 +359,8 @@ def usuarios():
     _, e = exige_login(admin=True)
     if e:
         return e
-    rows = db().execute("SELECT id,username,nome,role FROM users ORDER BY role, nome").fetchall()
-    return jsonify(usuarios=[dict(r) for r in rows])
+    rows = db().execute("SELECT id,username,nome,role,ativo FROM users ORDER BY role, nome").fetchall()
+    return jsonify(usuarios=[dict(r, ativo=bool(r["ativo"])) for r in rows], limite_admins=MAX_ADMINS, admins_ativos=admins_ativos())
 
 
 @app.post("/api/usuarios")
@@ -355,13 +374,38 @@ def criar_usuario():
         return erro("Informe o nome e um usuário de 3 a 30 caracteres (letras, números, ponto, hífen).")
     if len(senha) < 8:
         return erro("A senha precisa ter pelo menos 8 caracteres.")
+    perfil = d.get("role", "cliente")
+    if perfil not in ("cliente", "admin"):
+        return erro("Perfil inválido.")
+    if perfil == "admin" and admins_ativos() >= MAX_ADMINS:
+        return erro(f"Limite de {MAX_ADMINS} administradores atingido. Desative um administrador para cadastrar outro.", 409)
     try:
-        db().execute("INSERT INTO users(username,nome,password_hash,role) VALUES(?,?,?,'cliente')",
-                     (user, nome, generate_password_hash(senha)))
+        db().execute("INSERT INTO users(username,nome,password_hash,role) VALUES(?,?,?,?)",
+                     (user, nome, generate_password_hash(senha), perfil))
         db().commit()
     except sqlite3.IntegrityError:
         return erro("Esse usuário já existe.", 409)
     return jsonify(ok=True), 201
+
+
+@app.post("/api/usuarios/<int:uid>/ativo")
+def alterar_ativo(uid):
+    eu, e = exige_login(admin=True)
+    if e:
+        return e
+    ativo = (request.get_json(silent=True) or {}).get("ativo")
+    if not isinstance(ativo, bool):
+        return erro("Informe ativo: true ou false.")
+    alvo = db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    if not alvo:
+        return erro("Usuário não encontrado.", 404)
+    if alvo["id"] == eu["id"]:
+        return erro("Você não pode desativar o seu próprio usuário.", 409)
+    if ativo and alvo["role"] == "admin" and not alvo["ativo"] and admins_ativos() >= MAX_ADMINS:
+        return erro(f"Limite de {MAX_ADMINS} administradores atingido. Desative um administrador antes.", 409)
+    db().execute("UPDATE users SET ativo=? WHERE id=?", (int(ativo), uid))
+    db().commit()
+    return jsonify(ok=True)
 
 
 # ---------------------------------------------------------------- solicitações
@@ -467,7 +511,7 @@ def criar_solicitacao():
 
 @app.post("/api/solicitacoes/<int:sid>/devolver")
 def devolver(sid):
-    _, e = exige_login(admin=True)
+    eu, e = exige_login(admin=True)
     if e:
         return e
     s = db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()
@@ -516,8 +560,8 @@ def devolver(sid):
     db().executemany("UPDATE veiculos SET acionamento=?, valor_final=? WHERE id=?", updates)
     db().executemany("INSERT INTO anexos(solicitacao_id,tipo,nome,conteudo,criado_em) VALUES(?,?,?,?,?)",
                      [(sid, t, n, c, iso(agora())) for t, (n, c) in anexos.items()])
-    db().execute("UPDATE solicitacoes SET status='devolvida', numero_endosso=?, observacao=?, devolvida_em=? WHERE id=?",
-                 (numero[:60], str(d.get("observacao", "")).strip()[:2000], iso(agora()), sid))
+    db().execute("UPDATE solicitacoes SET status='devolvida', numero_endosso=?, observacao=?, devolvida_em=?, devolvida_por=? WHERE id=?",
+                 (numero[:60], str(d.get("observacao", "")).strip()[:2000], iso(agora()), eu["id"], sid))
     db().commit()
     if sp_ativo():
         arquivar_sharepoint(sid)  # falha aqui não bloqueia a devolução: o admin vê o erro e pode tentar de novo

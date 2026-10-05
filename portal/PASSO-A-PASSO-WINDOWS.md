@@ -108,6 +108,10 @@ Entrou? Ótimo. **Feche a janela preta** (isso desliga o portal; o próximo pass
 2. Preencha nome, usuário e senha (mínimo 8 caracteres) e clique **Criar usuário**.
 3. Passe o usuário e a senha ao cliente por um canal seguro.
 
+**Outros administradores:** na mesma tela, escolha o perfil **Administrador**. O limite é de **5 administradores ativos**;
+se precisar de outra vaga, clique em **Desativar** em um deles. Cada administrador entra com o próprio usuário e senha, e o portal
+registra quem devolveu cada endosso.
+
 ## Passo 9. Backup automático (não pule este passo)
 
 Tudo (solicitações, usuários, PDFs) fica no arquivo `C:\portal\portal.db`. Se o disco quebrar, sem backup tudo se perde.

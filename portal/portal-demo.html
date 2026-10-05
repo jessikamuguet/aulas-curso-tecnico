@@ -162,7 +162,7 @@
       <button class="btn sec mini" id="csv">Exportar CSV</button>
     </div>
     <div class="tw"><table>
-      <thead><tr><th>Nº</th><th>Solicitante</th><th>Solicitado em</th><th>Prazo (48h úteis)</th><th>Tipos</th><th>Veículos</th><th>Situação</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Solicitante</th><th>Solicitado em</th><th>Prazo (48h úteis)</th><th>Tipos</th><th>Veículos</th><th>Situação</th><th>Devolvido por</th></tr></thead>
       <tbody id="listaAdmin"></tbody>
     </table></div>
     <div id="vazioAdmin" class="quem" hidden>Nenhuma solicitação.</div>
@@ -171,17 +171,19 @@
   <!-- Admin: usuários -->
   <section id="vUsuarios" hidden>
     <div class="card">
-      <h2>Novo usuário (cliente)</h2>
+      <h2>Novo usuário</h2>
+      <p class="quem" id="contaAdmins"></p>
       <form id="fUsuario" class="grid">
         <div><label for="uNome">Nome</label><input id="uNome" required></div>
         <div><label for="uUser">Usuário</label><input id="uUser" required autocomplete="off"></div>
+        <div><label for="uPerfil">Perfil</label><select id="uPerfil"><option value="cliente">Cliente</option><option value="admin">Administrador</option></select></div>
         <div><label for="uPass">Senha (mín. 8 caracteres)</label><input id="uPass" type="password" required minlength="8" autocomplete="new-password"></div>
         <div style="align-self:end"><button class="btn" style="margin:0">Criar usuário</button></div>
       </form>
       <div class="erro" id="erroUsuario"></div><div class="ok" id="okUsuario" hidden></div>
     </div>
     <div class="card"><h2>Usuários</h2>
-      <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
+      <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
     </div>
   </section>
 
@@ -264,13 +266,16 @@ const Mock = (() => {
   st = st || seed();
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
   const fail = (m, status = 400) => { const e = new Error(m); e.status = status; throw e; };
-  const me = () => st.users.find(u => u.id === st.uid);
+  const MAX_ADMINS = 5;
+  const me = () => st.users.find(u => u.id === st.uid && u.ativo !== false);
+  const adminsAtivos = () => st.users.filter(u => u.role === "admin" && u.ativo !== false).length;
   const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role });
   const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401); if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
   const soma = (vs, k) => Math.round(vs.reduce((a, v) => a + (v[k] || 0), 0) * 100) / 100;
   const ser = s => { const u = st.users.find(x => x.id === s.user_id);
-    const { anexos, ...resto } = JSON.parse(JSON.stringify(s));
-    return { ...resto, anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
+    const { anexos, devolvida_por, ...resto } = JSON.parse(JSON.stringify(s));
+    const eu = me(), resp = devolvida_por && st.users.find(x => x.id === devolvida_por);
+    return { ...resto, ...(eu && eu.role === "admin" ? { devolvida_por: resp ? { id: resp.id, nome: resp.nome, username: resp.username } : null } : {}), anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
              total_calculado: soma(s.veiculos, "valor_calculado"), total_final: soma(s.veiculos, "valor_final") }; };
   const achar = id => st.sols.find(s => s.id === +id) || fail("Solicitação não encontrada.", 404);
   const placaNorm = p => String(p || "").toUpperCase().replace(/[- ]/g, "");
@@ -312,11 +317,11 @@ const Mock = (() => {
     });
     const agora = new Date();
     const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null,
-      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, ciente_em: null, divergencia: null, veiculos: linhas };
+      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, devolvida_por: null, ciente_em: null, divergencia: null, veiculos: linhas };
     st.sols.push(s); save(); return { solicitacao: ser(s) };
   }
   function devolver(d, id) {
-    exige(true); const s = achar(id);
+    const eu = exige(true); const s = achar(id);
     if (s.status !== "em_emissao") fail("Esta solicitação já foi devolvida.", 409);
     if (!String(d.numero_endosso || "").trim()) fail("Informe o número do endosso.");
     const upd = s.veiculos.map(v => {
@@ -327,7 +332,7 @@ const Mock = (() => {
       return [v, ac, Math.round(vf * 100) / 100 + 0];
     });
     upd.forEach(([v, ac, vf]) => { v.acionamento = ac; v.valor_final = vf; });
-    Object.assign(s, { status: "devolvida", numero_endosso: String(d.numero_endosso).trim(), observacao: String(d.observacao || "").trim(), devolvida_em: new Date().toISOString() });
+    Object.assign(s, { status: "devolvida", numero_endosso: String(d.numero_endosso).trim(), observacao: String(d.observacao || "").trim(), devolvida_em: new Date().toISOString(), devolvida_por: eu.id });
     save(); return { solicitacao: ser(s) };
   }
   const lerArq = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error("Não foi possível ler o arquivo.")); r.readAsDataURL(f); });
@@ -357,16 +362,23 @@ const Mock = (() => {
 
   return { anexoUrl: (id, tipo) => (achar(id).anexos?.[tipo]?.data) || "#", handle(method, path, d = {}) {
     let m;
-    if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password);
+    if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password && x.ativo !== false);
       if (!u) fail("Usuário ou senha inválidos.", 401); st.uid = u.id; save(); return { user: pub(u) }; }
     if (path === "/logout") { st.uid = null; save(); return { ok: true }; }
     if (path === "/me") return { user: pub(exige()) };
-    if (path === "/usuarios" && method === "GET") { exige(true); return { usuarios: st.users.map(pub) }; }
+    if (path === "/usuarios" && method === "GET") { exige(true); return { usuarios: st.users.map(u => ({ ...pub(u), ativo: u.ativo !== false })), limite_admins: MAX_ADMINS, admins_ativos: adminsAtivos() }; }
+    if ((m = path.match(/^\/usuarios\/(\d+)\/ativo$/))) { const eu = exige(true), alvo = st.users.find(x => x.id === +m[1]);
+      if (typeof d.ativo !== "boolean") fail("Informe ativo: true ou false."); if (!alvo) fail("Usuário não encontrado.", 404);
+      if (alvo.id === eu.id) fail("Você não pode desativar o seu próprio usuário.", 409);
+      if (d.ativo && alvo.role === "admin" && alvo.ativo === false && adminsAtivos() >= MAX_ADMINS) fail(`Limite de ${MAX_ADMINS} administradores atingido. Desative um administrador antes.`, 409);
+      alvo.ativo = d.ativo; save(); return { ok: true }; }
     if (path === "/usuarios") { exige(true); const user = String(d.username || "").trim().toLowerCase();
       if (!String(d.nome || "").trim() || !/^[a-z0-9._-]{3,30}$/.test(user)) fail("Informe o nome e um usuário de 3 a 30 caracteres (letras, números, ponto, hífen).");
       if (String(d.password || "").length < 8) fail("A senha precisa ter pelo menos 8 caracteres.");
       if (st.users.some(x => x.username === user)) fail("Esse usuário já existe.", 409);
-      st.users.push({ id: st.users.length + 1, username: user, nome: String(d.nome).trim(), password: d.password, role: "cliente" }); save(); return { ok: true }; }
+      const perfil = d.role || "cliente"; if (!["cliente", "admin"].includes(perfil)) fail("Perfil inválido.");
+      if (perfil === "admin" && adminsAtivos() >= MAX_ADMINS) fail(`Limite de ${MAX_ADMINS} administradores atingido. Desative um administrador para cadastrar outro.`, 409);
+      st.users.push({ id: st.users.length + 1, username: user, nome: String(d.nome).trim(), password: d.password, role: perfil, ativo: true }); save(); return { ok: true }; }
     if (path === "/solicitacoes" && method === "GET") { const u = exige();
       return { solicitacoes: st.sols.filter(s => u.role === "admin" || s.user_id === u.id).map(ser).reverse() }; }
     if (path === "/solicitacoes") return criar(exige(), d);
@@ -781,7 +793,7 @@ function filtradas() {
 function desenharAdmin() {
   const l = filtradas(); $("vazioAdmin").hidden = l.length > 0;
   $("listaAdmin").innerHTML = l.map(s => `<tr class="click" data-id="${s.id}"><td>${s.id}</td><td>${esc(s.usuario.nome)}<br><small>${esc(s.usuario.username)}</small></td>
-    <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td></tr>`).join("");
+    <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td><td>${s.devolvida_por ? esc(s.devolvida_por.nome) : "-"}</td></tr>`).join("");
 }
 $("filtroStatus").onchange = desenharAdmin;
 // Planilha para o administrativo: uma linha por veículo, com os dados do veículo e o valor da pró rata
@@ -789,10 +801,10 @@ const numBR = v => v == null ? "" : v.toLocaleString("pt-BR", { minimumFractionD
 function baixarPlanilha(sols, arquivo) {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const linhas = [["Nº solicitação","Data da solicitação","Usuário","Nome","Placa","Marca/Modelo","Chassi","Ano fabricação","Ano modelo","Tipo","Contrato",
-    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Situação","Prazo","Nº endosso","Devolvida em","Ciência em","Divergência","Anexos"]];
+    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Situação","Prazo","Nº endosso","Devolvido por","Devolvida em","Ciência em","Divergência","Anexos"]];
   sols.forEach(s => s.veiculos.forEach(v => linhas.push([s.id, fmtDataHora(s.criado_em), s.usuario.username, s.usuario.nome, v.placa, v.marca_modelo, v.chassi,
     v.ano_fab, v.ano_mod, v.tipo, v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "",
-    STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
+    STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_por && s.devolvida_por.nome, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
     s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(" + ")])));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
@@ -802,14 +814,23 @@ $("csv").onclick = () => baixarPlanilha(filtradas(), "solicitacoes-endossos.csv"
 
 // ---------- admin: usuários
 async function telaUsuarios() {
-  const { usuarios } = await API.get("/usuarios");
-  $("listaUsuarios").innerHTML = usuarios.map(u => `<tr><td>${esc(u.nome)}</td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administrador" : "Cliente"}</td></tr>`).join("");
+  const { usuarios, limite_admins: lim, admins_ativos: n } = await API.get("/usuarios");
+  $("contaAdmins").textContent = `Administradores ativos: ${n} de ${lim}.${n >= lim ? " Para cadastrar outro, desative um administrador." : ""}`;
+  $("uPerfil").querySelector("option[value=admin]").disabled = n >= lim;
+  $("listaUsuarios").innerHTML = usuarios.map(u => `<tr><td>${esc(u.nome)}</td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administrador" : "Cliente"}</td>
+    <td><span class="tag ${u.ativo ? "good" : "bad"}">${u.ativo ? "Ativo" : "Desativado"}</span></td>
+    <td>${u.id === USER.id ? "<small class=\"quem\">você</small>" : `<button class="btn sec mini" data-uid="${u.id}" data-ativo="${!u.ativo}">${u.ativo ? "Desativar" : "Reativar"}</button>`}</td></tr>`).join("");
   show("vUsuarios");
 }
+$("listaUsuarios").onclick = async e => {
+  const b = e.target.closest("button[data-uid]"); if (!b) return;
+  $("erroUsuario").textContent = "";
+  try { await API.post(`/usuarios/${b.dataset.uid}/ativo`, { ativo: b.dataset.ativo === "true" }); await telaUsuarios(); } catch (err) { $("erroUsuario").textContent = err.message; }
+};
 $("fUsuario").onsubmit = async e => {
   e.preventDefault(); $("erroUsuario").textContent = ""; $("okUsuario").hidden = true;
   try {
-    await API.post("/usuarios", { nome: $("uNome").value, username: $("uUser").value, password: $("uPass").value });
+    await API.post("/usuarios", { nome: $("uNome").value, username: $("uUser").value, password: $("uPass").value, role: $("uPerfil").value });
     $("okUsuario").hidden = false; $("okUsuario").textContent = `Usuário ${$("uUser").value} criado.`; e.target.reset(); await telaUsuarios();
   } catch (err) { $("erroUsuario").textContent = err.message; }
 };
@@ -826,6 +847,7 @@ async function telaDetalhe(id) {
       ${s.vigencia ? `<div><small>Vigência inicial</small>${fmtData(s.vigencia)}</div>` : ""}
       ${s.numero_endosso ? `<div><small>Nº do endosso</small>${esc(s.numero_endosso)}</div>` : ""}
       ${s.devolvida_em ? `<div><small>Devolvido em</small>${fmtDataHora(s.devolvida_em)}</div>` : ""}
+      ${s.devolvida_por ? `<div><small>Devolvido por</small>${esc(s.devolvida_por.nome)}</div>` : ""}
       ${s.ciente_em ? `<div><small>Ciência em</small>${fmtDataHora(s.ciente_em)}</div>` : ""}
     </div>`;
   let corpo;

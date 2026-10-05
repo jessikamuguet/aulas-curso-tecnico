@@ -106,7 +106,7 @@
       <button class="btn sec mini" id="csv">Exportar CSV</button>
     </div>
     <div class="tw"><table>
-      <thead><tr><th>Nº</th><th>Solicitante</th><th>Solicitado em</th><th>Prazo (48h úteis)</th><th>Tipos</th><th>Veículos</th><th>Situação</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Solicitante</th><th>Solicitado em</th><th>Prazo (48h úteis)</th><th>Tipos</th><th>Veículos</th><th>Situação</th><th>Devolvido por</th></tr></thead>
       <tbody id="listaAdmin"></tbody>
     </table></div>
     <div id="vazioAdmin" class="quem" hidden>Nenhuma solicitação.</div>
@@ -115,17 +115,19 @@
   <!-- Admin: usuários -->
   <section id="vUsuarios" hidden>
     <div class="card">
-      <h2>Novo usuário (cliente)</h2>
+      <h2>Novo usuário</h2>
+      <p class="quem" id="contaAdmins"></p>
       <form id="fUsuario" class="grid">
         <div><label for="uNome">Nome</label><input id="uNome" required></div>
         <div><label for="uUser">Usuário</label><input id="uUser" required autocomplete="off"></div>
+        <div><label for="uPerfil">Perfil</label><select id="uPerfil"><option value="cliente">Cliente</option><option value="admin">Administrador</option></select></div>
         <div><label for="uPass">Senha (mín. 8 caracteres)</label><input id="uPass" type="password" required minlength="8" autocomplete="new-password"></div>
         <div style="align-self:end"><button class="btn" style="margin:0">Criar usuário</button></div>
       </form>
       <div class="erro" id="erroUsuario"></div><div class="ok" id="okUsuario" hidden></div>
     </div>
     <div class="card"><h2>Usuários</h2>
-      <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
+      <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
     </div>
   </section>
 

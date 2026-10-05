@@ -84,7 +84,7 @@ function filtradas() {
 function desenharAdmin() {
   const l = filtradas(); $("vazioAdmin").hidden = l.length > 0;
   $("listaAdmin").innerHTML = l.map(s => `<tr class="click" data-id="${s.id}"><td>${s.id}</td><td>${esc(s.usuario.nome)}<br><small>${esc(s.usuario.username)}</small></td>
-    <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td></tr>`).join("");
+    <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td><td>${s.devolvida_por ? esc(s.devolvida_por.nome) : "-"}</td></tr>`).join("");
 }
 $("filtroStatus").onchange = desenharAdmin;
 // Planilha para o administrativo: uma linha por veículo, com os dados do veículo e o valor da pró rata
@@ -92,10 +92,10 @@ const numBR = v => v == null ? "" : v.toLocaleString("pt-BR", { minimumFractionD
 function baixarPlanilha(sols, arquivo) {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const linhas = [["Nº solicitação","Data da solicitação","Usuário","Nome","Placa","Marca/Modelo","Chassi","Ano fabricação","Ano modelo","Tipo","Contrato",
-    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Situação","Prazo","Nº endosso","Devolvida em","Ciência em","Divergência","Anexos"]];
+    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Situação","Prazo","Nº endosso","Devolvido por","Devolvida em","Ciência em","Divergência","Anexos"]];
   sols.forEach(s => s.veiculos.forEach(v => linhas.push([s.id, fmtDataHora(s.criado_em), s.usuario.username, s.usuario.nome, v.placa, v.marca_modelo, v.chassi,
     v.ano_fab, v.ano_mod, v.tipo, v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "",
-    STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
+    STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_por && s.devolvida_por.nome, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
     s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(" + ")])));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
@@ -105,14 +105,23 @@ $("csv").onclick = () => baixarPlanilha(filtradas(), "solicitacoes-endossos.csv"
 
 // ---------- admin: usuários
 async function telaUsuarios() {
-  const { usuarios } = await API.get("/usuarios");
-  $("listaUsuarios").innerHTML = usuarios.map(u => `<tr><td>${esc(u.nome)}</td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administrador" : "Cliente"}</td></tr>`).join("");
+  const { usuarios, limite_admins: lim, admins_ativos: n } = await API.get("/usuarios");
+  $("contaAdmins").textContent = `Administradores ativos: ${n} de ${lim}.${n >= lim ? " Para cadastrar outro, desative um administrador." : ""}`;
+  $("uPerfil").querySelector("option[value=admin]").disabled = n >= lim;
+  $("listaUsuarios").innerHTML = usuarios.map(u => `<tr><td>${esc(u.nome)}</td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administrador" : "Cliente"}</td>
+    <td><span class="tag ${u.ativo ? "good" : "bad"}">${u.ativo ? "Ativo" : "Desativado"}</span></td>
+    <td>${u.id === USER.id ? "<small class=\"quem\">você</small>" : `<button class="btn sec mini" data-uid="${u.id}" data-ativo="${!u.ativo}">${u.ativo ? "Desativar" : "Reativar"}</button>`}</td></tr>`).join("");
   show("vUsuarios");
 }
+$("listaUsuarios").onclick = async e => {
+  const b = e.target.closest("button[data-uid]"); if (!b) return;
+  $("erroUsuario").textContent = "";
+  try { await API.post(`/usuarios/${b.dataset.uid}/ativo`, { ativo: b.dataset.ativo === "true" }); await telaUsuarios(); } catch (err) { $("erroUsuario").textContent = err.message; }
+};
 $("fUsuario").onsubmit = async e => {
   e.preventDefault(); $("erroUsuario").textContent = ""; $("okUsuario").hidden = true;
   try {
-    await API.post("/usuarios", { nome: $("uNome").value, username: $("uUser").value, password: $("uPass").value });
+    await API.post("/usuarios", { nome: $("uNome").value, username: $("uUser").value, password: $("uPass").value, role: $("uPerfil").value });
     $("okUsuario").hidden = false; $("okUsuario").textContent = `Usuário ${$("uUser").value} criado.`; e.target.reset(); await telaUsuarios();
   } catch (err) { $("erroUsuario").textContent = err.message; }
 };
@@ -129,6 +138,7 @@ async function telaDetalhe(id) {
       ${s.vigencia ? `<div><small>Vigência inicial</small>${fmtData(s.vigencia)}</div>` : ""}
       ${s.numero_endosso ? `<div><small>Nº do endosso</small>${esc(s.numero_endosso)}</div>` : ""}
       ${s.devolvida_em ? `<div><small>Devolvido em</small>${fmtDataHora(s.devolvida_em)}</div>` : ""}
+      ${s.devolvida_por ? `<div><small>Devolvido por</small>${esc(s.devolvida_por.nome)}</div>` : ""}
       ${s.ciente_em ? `<div><small>Ciência em</small>${fmtDataHora(s.ciente_em)}</div>` : ""}
     </div>`;
   let corpo;

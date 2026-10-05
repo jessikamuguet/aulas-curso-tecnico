@@ -11,13 +11,16 @@ const Mock = (() => {
   st = st || seed();
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
   const fail = (m, status = 400) => { const e = new Error(m); e.status = status; throw e; };
-  const me = () => st.users.find(u => u.id === st.uid);
+  const MAX_ADMINS = 5;
+  const me = () => st.users.find(u => u.id === st.uid && u.ativo !== false);
+  const adminsAtivos = () => st.users.filter(u => u.role === "admin" && u.ativo !== false).length;
   const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role });
   const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401); if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
   const soma = (vs, k) => Math.round(vs.reduce((a, v) => a + (v[k] || 0), 0) * 100) / 100;
   const ser = s => { const u = st.users.find(x => x.id === s.user_id);
-    const { anexos, ...resto } = JSON.parse(JSON.stringify(s));
-    return { ...resto, anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
+    const { anexos, devolvida_por, ...resto } = JSON.parse(JSON.stringify(s));
+    const eu = me(), resp = devolvida_por && st.users.find(x => x.id === devolvida_por);
+    return { ...resto, ...(eu && eu.role === "admin" ? { devolvida_por: resp ? { id: resp.id, nome: resp.nome, username: resp.username } : null } : {}), anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
              total_calculado: soma(s.veiculos, "valor_calculado"), total_final: soma(s.veiculos, "valor_final") }; };
   const achar = id => st.sols.find(s => s.id === +id) || fail("Solicitação não encontrada.", 404);
   const placaNorm = p => String(p || "").toUpperCase().replace(/[- ]/g, "");
@@ -59,11 +62,11 @@ const Mock = (() => {
     });
     const agora = new Date();
     const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null,
-      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, ciente_em: null, divergencia: null, veiculos: linhas };
+      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, devolvida_por: null, ciente_em: null, divergencia: null, veiculos: linhas };
     st.sols.push(s); save(); return { solicitacao: ser(s) };
   }
   function devolver(d, id) {
-    exige(true); const s = achar(id);
+    const eu = exige(true); const s = achar(id);
     if (s.status !== "em_emissao") fail("Esta solicitação já foi devolvida.", 409);
     if (!String(d.numero_endosso || "").trim()) fail("Informe o número do endosso.");
     const upd = s.veiculos.map(v => {
@@ -74,7 +77,7 @@ const Mock = (() => {
       return [v, ac, Math.round(vf * 100) / 100 + 0];
     });
     upd.forEach(([v, ac, vf]) => { v.acionamento = ac; v.valor_final = vf; });
-    Object.assign(s, { status: "devolvida", numero_endosso: String(d.numero_endosso).trim(), observacao: String(d.observacao || "").trim(), devolvida_em: new Date().toISOString() });
+    Object.assign(s, { status: "devolvida", numero_endosso: String(d.numero_endosso).trim(), observacao: String(d.observacao || "").trim(), devolvida_em: new Date().toISOString(), devolvida_por: eu.id });
     save(); return { solicitacao: ser(s) };
   }
   const lerArq = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error("Não foi possível ler o arquivo.")); r.readAsDataURL(f); });
@@ -104,16 +107,23 @@ const Mock = (() => {
 
   return { anexoUrl: (id, tipo) => (achar(id).anexos?.[tipo]?.data) || "#", handle(method, path, d = {}) {
     let m;
-    if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password);
+    if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password && x.ativo !== false);
       if (!u) fail("Usuário ou senha inválidos.", 401); st.uid = u.id; save(); return { user: pub(u) }; }
     if (path === "/logout") { st.uid = null; save(); return { ok: true }; }
     if (path === "/me") return { user: pub(exige()) };
-    if (path === "/usuarios" && method === "GET") { exige(true); return { usuarios: st.users.map(pub) }; }
+    if (path === "/usuarios" && method === "GET") { exige(true); return { usuarios: st.users.map(u => ({ ...pub(u), ativo: u.ativo !== false })), limite_admins: MAX_ADMINS, admins_ativos: adminsAtivos() }; }
+    if ((m = path.match(/^\/usuarios\/(\d+)\/ativo$/))) { const eu = exige(true), alvo = st.users.find(x => x.id === +m[1]);
+      if (typeof d.ativo !== "boolean") fail("Informe ativo: true ou false."); if (!alvo) fail("Usuário não encontrado.", 404);
+      if (alvo.id === eu.id) fail("Você não pode desativar o seu próprio usuário.", 409);
+      if (d.ativo && alvo.role === "admin" && alvo.ativo === false && adminsAtivos() >= MAX_ADMINS) fail(`Limite de ${MAX_ADMINS} administradores atingido. Desative um administrador antes.`, 409);
+      alvo.ativo = d.ativo; save(); return { ok: true }; }
     if (path === "/usuarios") { exige(true); const user = String(d.username || "").trim().toLowerCase();
       if (!String(d.nome || "").trim() || !/^[a-z0-9._-]{3,30}$/.test(user)) fail("Informe o nome e um usuário de 3 a 30 caracteres (letras, números, ponto, hífen).");
       if (String(d.password || "").length < 8) fail("A senha precisa ter pelo menos 8 caracteres.");
       if (st.users.some(x => x.username === user)) fail("Esse usuário já existe.", 409);
-      st.users.push({ id: st.users.length + 1, username: user, nome: String(d.nome).trim(), password: d.password, role: "cliente" }); save(); return { ok: true }; }
+      const perfil = d.role || "cliente"; if (!["cliente", "admin"].includes(perfil)) fail("Perfil inválido.");
+      if (perfil === "admin" && adminsAtivos() >= MAX_ADMINS) fail(`Limite de ${MAX_ADMINS} administradores atingido. Desative um administrador para cadastrar outro.`, 409);
+      st.users.push({ id: st.users.length + 1, username: user, nome: String(d.nome).trim(), password: d.password, role: perfil, ativo: true }); save(); return { ok: true }; }
     if (path === "/solicitacoes" && method === "GET") { const u = exige();
       return { solicitacoes: st.sols.filter(s => u.role === "admin" || s.user_id === u.id).map(ser).reverse() }; }
     if (path === "/solicitacoes") return criar(exige(), d);
