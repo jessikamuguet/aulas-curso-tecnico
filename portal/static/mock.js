@@ -62,8 +62,14 @@ const Mock = (() => {
         placa_substituida: ps || null, data_endosso: v.data_endosso || null, valor_inicial: v.tipo === "SUBSTITUIÇÃO" ? null : v.valor_inicial,
         dias, valor_calculado: vc, acionamento: false, valor_final: null, confirmado: false });
     });
+    const parcelas = parseInt(d.parcelas || 1);
+    if (isNaN(parcelas) || parcelas < 1) fail("Número de parcelas inválido.");
+    if (parcelas !== 1) {
+      const calc = linhas.filter(l => l.valor_calculado !== null), opc = parcelamento(calc.reduce((a, l) => a + l.valor_calculado, 0), Math.max(0, ...calc.map(l => l.dias)));
+      if (!opc.opcoes.some(o => o.n === parcelas)) fail(`Parcelamento em ${parcelas}x não é permitido.` + (opc.motivo ? " " + opc.motivo : ` O máximo é ${opc.max}x.`));
+    }
     const agora = new Date();
-    const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null,
+    const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null, parcelas,
       status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, devolvida_por: null, ciente_em: null, divergencia: null, veiculos: linhas };
     st.sols.push(s); save(); return { solicitacao: ser(s) };
   }

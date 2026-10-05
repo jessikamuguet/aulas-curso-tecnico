@@ -34,6 +34,10 @@ TIPOS = ("INCLUSÃO", "EXCLUSÃO", "SUBSTITUIÇÃO")
 MAX_PDF = 10 * 1024 * 1024  # 10 MB por anexo
 ANEXOS = {"endosso": "Endosso", "boleto": "Boleto"}
 MAX_ADMINS = 5  # no máximo 5 administradores ativos
+# Parcelamento: até 10x, parcela mínima de R$ 500,00; o nº de parcelas acompanha (pró rata) o prazo que resta dos 365 dias de
+# vigência (12 meses) e só é liberado até 10 meses de vigência decorridos.
+PARCELA_MINIMA_CENTAVOS = 50000
+MAX_PARCELAS = 10
 SEM_PLACA = "SEM PLACA"  # veículo 0 km ainda sem placa (só inclusão); identificado pelo chassi
 MAX_PLANILHA = 5 * 1024 * 1024  # importação de .xls
 
@@ -68,7 +72,8 @@ CREATE TABLE IF NOT EXISTS solicitacoes (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
   criado_em TEXT NOT NULL, prazo_em TEXT NOT NULL, vigencia TEXT,
   status TEXT NOT NULL DEFAULT 'em_emissao', numero_endosso TEXT, observacao TEXT,
-  devolvida_em TEXT, ciente_em TEXT, divergencia TEXT, devolvida_por INTEGER REFERENCES users(id));
+  devolvida_em TEXT, ciente_em TEXT, divergencia TEXT, devolvida_por INTEGER REFERENCES users(id),
+  parcelas INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS veiculos (
   id INTEGER PRIMARY KEY, solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes(id),
   marca_modelo TEXT, placa TEXT, chassi TEXT, contrato TEXT, tipo TEXT,
@@ -107,6 +112,8 @@ def init_db():
     for col, padrao in (('ativo', 1), ('trocar_senha', 0), ('sessao', 0)):  # bancos criados antes da gestão de usuários e senhas
         if col not in {r[1] for r in con.execute('PRAGMA table_info(users)')}:
             con.execute(f'ALTER TABLE users ADD COLUMN {col} INTEGER NOT NULL DEFAULT {padrao}')
+    if 'parcelas' not in {r[1] for r in con.execute('PRAGMA table_info(solicitacoes)')}:  # bancos criados antes do parcelamento
+        con.execute('ALTER TABLE solicitacoes ADD COLUMN parcelas INTEGER NOT NULL DEFAULT 1')
     if 'devolvida_por' not in {r[1] for r in con.execute('PRAGMA table_info(solicitacoes)')}:
         con.execute('ALTER TABLE solicitacoes ADD COLUMN devolvida_por INTEGER')
     for col in ('sp_url', 'sp_erro'):  # bancos criados antes da integração com SharePoint
@@ -253,6 +260,28 @@ def prazo_horas_uteis(inicio, horas=PRAZO_HORAS_UTEIS):
             return d + resto
         resto -= disponivel
         d = proximo_dia_util(d)
+
+
+def parcelamento(total, dias):
+    """Opções de parcelamento para `total` (R$) com `dias` de vigência já decorridos.
+    Devolve dict(max, motivo, opcoes=[(n, parcela, primeira_parcela)]); `max` < 2 significa que só há pagamento à vista."""
+    centavos = round(total * 100)
+    if centavos <= 0:
+        return dict(max=1, motivo="Não há valor a pagar para parcelar.", opcoes=[])
+    por_prazo = min(MAX_PARCELAS, (BASE_DIAS - dias) * 12 // BASE_DIAS)  # meses que restam da vigência
+    por_valor = centavos // PARCELA_MINIMA_CENTAVOS
+    n = min(por_prazo, por_valor)
+    if por_prazo < 2:
+        motivo = "O parcelamento só é liberado até 10 meses de vigência do contrato."
+    elif por_valor < 2:
+        motivo = "A parcela mínima é de R$ 500,00: o valor não permite parcelar."
+    else:
+        motivo = None
+    opcoes = []
+    for k in range(2, n + 1):
+        base = centavos // k
+        opcoes.append((k, base / 100, (base + centavos - base * k) / 100))  # os centavos que sobram entram na 1ª parcela
+    return dict(max=max(n, 1), motivo=motivo, opcoes=opcoes)
 
 
 def calcular(tipo, vigencia, data_endosso, valor_inicial):
@@ -560,9 +589,18 @@ def criar_solicitacao():
                            ps or None, data_e, vi, dias, valor_calc, af, am))
     except (ValueError, TypeError) as ex:
         return erro(str(ex) if isinstance(ex, ValueError) and str(ex) else "Dados inválidos na solicitação.")
+    try:
+        parcelas = int(d.get("parcelas", 1) or 1)
+    except (TypeError, ValueError):
+        return erro("Número de parcelas inválido.")
+    if parcelas != 1:
+        calculados = [l for l in linhas if l[9] is not None]
+        opc = parcelamento(sum(l[9] for l in calculados), max((l[8] for l in calculados), default=0))
+        if parcelas not in [o[0] for o in opc["opcoes"]]:
+            return erro(f"Parcelamento em {parcelas}x não é permitido." + (f" {opc['motivo']}" if opc["motivo"] else f" O máximo é {opc['max']}x."))
     agora_ = agora()
-    cur = db().execute("INSERT INTO solicitacoes(user_id,criado_em,prazo_em,vigencia) VALUES(?,?,?,?)",
-                       (u["id"], iso(agora_), iso(prazo_horas_uteis(agora_)), vig.isoformat() if vig else None))
+    cur = db().execute("INSERT INTO solicitacoes(user_id,criado_em,prazo_em,vigencia,parcelas) VALUES(?,?,?,?,?)",
+                       (u["id"], iso(agora_), iso(prazo_horas_uteis(agora_)), vig.isoformat() if vig else None, parcelas))
     sid = cur.lastrowid
     db().executemany("""INSERT INTO veiculos(solicitacao_id,marca_modelo,placa,chassi,contrato,tipo,
                         placa_substituida,data_endosso,valor_inicial,dias,valor_calculado,ano_fab,ano_mod) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",

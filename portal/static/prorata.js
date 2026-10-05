@@ -50,4 +50,20 @@ function prazoHorasUteis(inicio, horas = 48) {
     resto -= disp; d = proxDia(d);
   }
 }
-if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso, prazoHorasUteis };
+// Parcelamento: até 10x, parcela mínima de R$ 500,00; o nº de parcelas acompanha (pró rata) o prazo que resta dos 365 dias de
+// vigência (12 meses) e só é liberado até 10 meses de vigência decorridos. `dias` = dias de vigência já decorridos.
+const PARCELA_MINIMA = 500, MAX_PARCELAS = 10;
+function parcelamento(total, dias) {
+  const centavos = Math.round(total * 100);
+  if (centavos <= 0) return { max: 1, motivo: "Não há valor a pagar para parcelar.", opcoes: [] };
+  const porPrazo = Math.min(MAX_PARCELAS, Math.floor((BASE_DIAS - dias) * 12 / BASE_DIAS)); // meses que restam da vigência
+  const porValor = Math.floor(centavos / (PARCELA_MINIMA * 100));
+  const n = Math.min(porPrazo, porValor);
+  const motivo = porPrazo < 2 ? "O parcelamento só é liberado até 10 meses de vigência do contrato."
+    : porValor < 2 ? "A parcela mínima é de R$ 500,00: o valor não permite parcelar." : null;
+  const opcoes = [];
+  for (let k = 2; k <= n; k++) { const base = Math.floor(centavos / k); opcoes.push({ n: k, parcela: base / 100, primeira: (base + centavos - base * k) / 100 }); }
+  return { max: Math.max(n, 1), motivo, opcoes }; // os centavos que sobram entram na 1ª parcela
+}
+
+if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso, prazoHorasUteis, parcelamento };

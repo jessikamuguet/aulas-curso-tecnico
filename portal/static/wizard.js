@@ -226,10 +226,11 @@
   };
 
   // Etapa 2
-  let total = null, subsPend = [], enviando = false;
+  let total = null, subsPend = [], enviando = false, maxDias = 0;
   function recalcular() {
     $("erroCalc").textContent = "";
     let tv = 0, erro = "", completo = true;
+    maxDias = 0;
     const vig = $("vig").value ? parse($("vig").value) : null;
     for (const tr of $("linhas").children) {
       const q = s => tr.querySelector(s), data = q(".dt").value, vi = parseFloat(q(".vi").value);
@@ -237,7 +238,7 @@
       if (!vig || !data || isNaN(vi)) { set("-","-"); completo = false; continue; }
       try {
         const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, tipo: tr.dataset.tp });
-        set(r.dias, brl(r.valor)); tv += r.valor;
+        set(r.dias, brl(r.valor)); tv += r.valor; maxDias = Math.max(maxDias, r.dias);
       } catch (e) { set("-","-"); erro = e.message; completo = false; }
     }
     $("tV").textContent = brl(tv); $("erroCalc").textContent = erro;
@@ -245,6 +246,19 @@
     total = (n ? completo && !erro : subsPend.length > 0) ? tv : null;
     $("termoBox").hidden = total === null;
     if (total === null) resetTermo();
+    renderParcelas();
+  }
+
+  // Parcelamento: só aparece quando há valor a pagar; usa o maior tempo de vigência decorrido entre os veículos (o mais restritivo)
+  function renderParcelas() {
+    const mostrar = total !== null && total > 0 && $("linhas").children.length > 0;
+    $("blocoParcelas").hidden = !mostrar;
+    if (!mostrar) { $("parcelas").innerHTML = '<option value="1">À vista (1x)</option>'; return; }
+    const p = parcelamento(total, maxDias), sel = +$("parcelas").value || 1;
+    $("parcInfo").innerHTML = `Valor a pagar: <b>${brl(total)}</b>. Regras: até ${MAX_PARCELAS}x, parcela mínima de ${brl(PARCELA_MINIMA)} e número de parcelas proporcional ao prazo que resta da vigência de ${BASE_DIAS} dias (${maxDias} dia(s) já decorridos). `
+      + (p.opcoes.length ? `Disponível em até <b>${p.max}x</b>.` : `<b>Parcelamento indisponível:</b> ${esc(p.motivo)}`);
+    $("parcelas").innerHTML = '<option value="1">À vista (1x)</option>' + p.opcoes.map(o => `<option value="${o.n}">${o.n}x de ${brl(o.parcela)}${o.primeira !== o.parcela ? " (1ª parcela " + brl(o.primeira) + ")" : ""}</option>`).join("");
+    $("parcelas").value = p.opcoes.some(o => o.n === sel) ? String(sel) : "1";
   }
   // Mesma categoria: repete o valor inicial do primeiro veículo nos demais
   function syncValor() {
@@ -272,7 +286,7 @@
       const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, ano_fab: +tr._v.af, ano_mod: +tr._v.am, contrato: tr._v.np,
         tipo: tr._v.tp, data_endosso: tr.querySelector(".dt").value, valor_inicial: parseFloat(tr.querySelector(".vi").value) }));
       const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, ano_fab: +v.af, ano_mod: +v.am, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
-      const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, veiculos: [...calc, ...subs] });
+      const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, parcelas: $("blocoParcelas").hidden ? 1 : +$("parcelas").value || 1, veiculos: [...calc, ...subs] });
       $("prosseguir").hidden = true; $("termo").disabled = true;
       $("okMsg").hidden = false;
       $("okMsg").innerHTML = `<b>Solicitação nº ${s.id} registrada</b> em ${fmtDataHora(s.criado_em)} para ${s.veiculos.length} veículo(s).<br>
@@ -287,5 +301,5 @@
     $("linhas").innerHTML = ""; $("vig").value = ""; $("mesmaCat").checked = $("mesmaData").checked = false;
     $("termo").disabled = false; $("prosseguir").disabled = false; $("erroEnvio").textContent = "";
     ["erro1","erroImp"].forEach(i => $(i).textContent = ""); $("listaErros").hidden = true; $("avisoSub").hidden = $("avisoExc").hidden = $("avisoAnos").hidden = true;
-    subsPend = []; total = null; resetTermo(); etapa(1); avisoSub();
+    subsPend = []; total = null; maxDias = 0; resetTermo(); etapa(1); avisoSub(); renderParcelas();
   }

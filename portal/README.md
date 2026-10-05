@@ -66,6 +66,13 @@ modelo são obrigatórios no cadastro e na importação.
   trocar a própria senha em *Alterar senha* (no alto da tela); isso também encerra os outros acessos abertos dele.
 - **Cálculo:** custo dia = valor inicial ÷ 365; saldo = valor inicial − custo dia × dias (dias = data do endosso − vigência).
   O servidor recalcula tudo; não confia nos valores enviados pelo navegador.
+- **Parcelamento:** até **10x**, **parcela mínima de R$ 500,00**. O contrato dura 365 dias (12 meses) e o número de parcelas acompanha
+  (pró rata) os meses que **restam** de vigência, no máximo 10; só é liberado até **10 meses de vigência decorridos** (depois
+  disso, só à vista). Exemplos para R$ 8.000: contrato novo ou até ~2 meses = 10x; 5 meses decorridos = 7x; 10 meses = 2x; mais de
+  10 meses = não parcela. Com R$ 2.200 o limite pelo valor é 4x. A conta usa o **maior tempo de vigência** entre os veículos (o mais
+  restritivo) sobre o **valor líquido a pagar** (exclusões que devolvem valor não são parceladas). O cliente escolhe na solicitação;
+  o servidor confere a regra; o administrador vê o pedido e a verificação com o **valor final** na devolução. Os centavos que
+  sobram da divisão entram na 1ª parcela. Constantes em `app.py` (`PARCELA_MINIMA_CENTAVOS`, `MAX_PARCELAS`) e `static/prorata.js`.
 - **Exclusão:** sempre negativa. Antes de restituir é preciso avaliar se a placa teve acionamento: o admin marca
   *Teve acionamento* e o valor vira R$ 0,00 (sem restituição). O valor mostrado ao cliente na solicitação é só estimativa.
 - **Substituição:** não é calculada no portal. A placa passa por análise interna e o admin informa o valor ao devolver.

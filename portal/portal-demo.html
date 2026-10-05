@@ -125,6 +125,12 @@
           <tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
         </table></div>
         </div>
+        <div class="aviso" id="blocoParcelas" hidden>
+          <b>Parcelamento</b>
+          <p id="parcInfo"></p>
+          <label for="parcelas">Quero pagar em</label>
+          <select id="parcelas" style="width:auto"><option value="1">À vista (1x)</option></select>
+        </div>
         <div class="aviso" id="avisoExc2" hidden></div>
         <div class="aviso" id="avisoSub2" hidden></div>
         <div class="erro" id="erroCalc"></div>
@@ -268,7 +274,23 @@ function prazoHorasUteis(inicio, horas = 48) {
     resto -= disp; d = proxDia(d);
   }
 }
-if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso, prazoHorasUteis };
+// Parcelamento: até 10x, parcela mínima de R$ 500,00; o nº de parcelas acompanha (pró rata) o prazo que resta dos 365 dias de
+// vigência (12 meses) e só é liberado até 10 meses de vigência decorridos. `dias` = dias de vigência já decorridos.
+const PARCELA_MINIMA = 500, MAX_PARCELAS = 10;
+function parcelamento(total, dias) {
+  const centavos = Math.round(total * 100);
+  if (centavos <= 0) return { max: 1, motivo: "Não há valor a pagar para parcelar.", opcoes: [] };
+  const porPrazo = Math.min(MAX_PARCELAS, Math.floor((BASE_DIAS - dias) * 12 / BASE_DIAS)); // meses que restam da vigência
+  const porValor = Math.floor(centavos / (PARCELA_MINIMA * 100));
+  const n = Math.min(porPrazo, porValor);
+  const motivo = porPrazo < 2 ? "O parcelamento só é liberado até 10 meses de vigência do contrato."
+    : porValor < 2 ? "A parcela mínima é de R$ 500,00: o valor não permite parcelar." : null;
+  const opcoes = [];
+  for (let k = 2; k <= n; k++) { const base = Math.floor(centavos / k); opcoes.push({ n: k, parcela: base / 100, primeira: (base + centavos - base * k) / 100 }); }
+  return { max: Math.max(n, 1), motivo, opcoes }; // os centavos que sobram entram na 1ª parcela
+}
+
+if (typeof module !== "undefined") module.exports = { diasEntre, saldoProRata, calcularEndosso, prazoHorasUteis, parcelamento };
 </script>
 <script>const $ = id => document.getElementById(id);
 const brl = v => (v == null ? "-" : v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" }));
@@ -341,8 +363,14 @@ const Mock = (() => {
         placa_substituida: ps || null, data_endosso: v.data_endosso || null, valor_inicial: v.tipo === "SUBSTITUIÇÃO" ? null : v.valor_inicial,
         dias, valor_calculado: vc, acionamento: false, valor_final: null, confirmado: false });
     });
+    const parcelas = parseInt(d.parcelas || 1);
+    if (isNaN(parcelas) || parcelas < 1) fail("Número de parcelas inválido.");
+    if (parcelas !== 1) {
+      const calc = linhas.filter(l => l.valor_calculado !== null), opc = parcelamento(calc.reduce((a, l) => a + l.valor_calculado, 0), Math.max(0, ...calc.map(l => l.dias)));
+      if (!opc.opcoes.some(o => o.n === parcelas)) fail(`Parcelamento em ${parcelas}x não é permitido.` + (opc.motivo ? " " + opc.motivo : ` O máximo é ${opc.max}x.`));
+    }
     const agora = new Date();
-    const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null,
+    const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null, parcelas,
       status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, devolvida_por: null, ciente_em: null, divergencia: null, veiculos: linhas };
     st.sols.push(s); save(); return { solicitacao: ser(s) };
   }
@@ -685,10 +713,11 @@ const API = (() => {
   };
 
   // Etapa 2
-  let total = null, subsPend = [], enviando = false;
+  let total = null, subsPend = [], enviando = false, maxDias = 0;
   function recalcular() {
     $("erroCalc").textContent = "";
     let tv = 0, erro = "", completo = true;
+    maxDias = 0;
     const vig = $("vig").value ? parse($("vig").value) : null;
     for (const tr of $("linhas").children) {
       const q = s => tr.querySelector(s), data = q(".dt").value, vi = parseFloat(q(".vi").value);
@@ -696,7 +725,7 @@ const API = (() => {
       if (!vig || !data || isNaN(vi)) { set("-","-"); completo = false; continue; }
       try {
         const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, tipo: tr.dataset.tp });
-        set(r.dias, brl(r.valor)); tv += r.valor;
+        set(r.dias, brl(r.valor)); tv += r.valor; maxDias = Math.max(maxDias, r.dias);
       } catch (e) { set("-","-"); erro = e.message; completo = false; }
     }
     $("tV").textContent = brl(tv); $("erroCalc").textContent = erro;
@@ -704,6 +733,19 @@ const API = (() => {
     total = (n ? completo && !erro : subsPend.length > 0) ? tv : null;
     $("termoBox").hidden = total === null;
     if (total === null) resetTermo();
+    renderParcelas();
+  }
+
+  // Parcelamento: só aparece quando há valor a pagar; usa o maior tempo de vigência decorrido entre os veículos (o mais restritivo)
+  function renderParcelas() {
+    const mostrar = total !== null && total > 0 && $("linhas").children.length > 0;
+    $("blocoParcelas").hidden = !mostrar;
+    if (!mostrar) { $("parcelas").innerHTML = '<option value="1">À vista (1x)</option>'; return; }
+    const p = parcelamento(total, maxDias), sel = +$("parcelas").value || 1;
+    $("parcInfo").innerHTML = `Valor a pagar: <b>${brl(total)}</b>. Regras: até ${MAX_PARCELAS}x, parcela mínima de ${brl(PARCELA_MINIMA)} e número de parcelas proporcional ao prazo que resta da vigência de ${BASE_DIAS} dias (${maxDias} dia(s) já decorridos). `
+      + (p.opcoes.length ? `Disponível em até <b>${p.max}x</b>.` : `<b>Parcelamento indisponível:</b> ${esc(p.motivo)}`);
+    $("parcelas").innerHTML = '<option value="1">À vista (1x)</option>' + p.opcoes.map(o => `<option value="${o.n}">${o.n}x de ${brl(o.parcela)}${o.primeira !== o.parcela ? " (1ª parcela " + brl(o.primeira) + ")" : ""}</option>`).join("");
+    $("parcelas").value = p.opcoes.some(o => o.n === sel) ? String(sel) : "1";
   }
   // Mesma categoria: repete o valor inicial do primeiro veículo nos demais
   function syncValor() {
@@ -731,7 +773,7 @@ const API = (() => {
       const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, ano_fab: +tr._v.af, ano_mod: +tr._v.am, contrato: tr._v.np,
         tipo: tr._v.tp, data_endosso: tr.querySelector(".dt").value, valor_inicial: parseFloat(tr.querySelector(".vi").value) }));
       const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, ano_fab: +v.af, ano_mod: +v.am, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
-      const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, veiculos: [...calc, ...subs] });
+      const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, parcelas: $("blocoParcelas").hidden ? 1 : +$("parcelas").value || 1, veiculos: [...calc, ...subs] });
       $("prosseguir").hidden = true; $("termo").disabled = true;
       $("okMsg").hidden = false;
       $("okMsg").innerHTML = `<b>Solicitação nº ${s.id} registrada</b> em ${fmtDataHora(s.criado_em)} para ${s.veiculos.length} veículo(s).<br>
@@ -746,7 +788,7 @@ const API = (() => {
     $("linhas").innerHTML = ""; $("vig").value = ""; $("mesmaCat").checked = $("mesmaData").checked = false;
     $("termo").disabled = false; $("prosseguir").disabled = false; $("erroEnvio").textContent = "";
     ["erro1","erroImp"].forEach(i => $(i).textContent = ""); $("listaErros").hidden = true; $("avisoSub").hidden = $("avisoExc").hidden = $("avisoAnos").hidden = true;
-    subsPend = []; total = null; resetTermo(); etapa(1); avisoSub();
+    subsPend = []; total = null; maxDias = 0; resetTermo(); etapa(1); avisoSub(); renderParcelas();
   }
 </script>
 <script>// Navegação, perfis (admin/cliente) e telas do portal
@@ -846,9 +888,9 @@ const numBR = v => v == null ? "" : v.toLocaleString("pt-BR", { minimumFractionD
 function baixarPlanilha(sols, arquivo) {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const linhas = [["Nº solicitação","Data da solicitação","Usuário","Nome","Placa","Marca/Modelo","Chassi","Ano fabricação","Ano modelo","Tipo","Contrato",
-    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Situação","Prazo","Nº endosso","Devolvido por","Devolvida em","Ciência em","Divergência","Anexos"]];
+    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Parcelas solicitadas","Situação","Prazo","Nº endosso","Devolvido por","Devolvida em","Ciência em","Divergência","Anexos"]];
   sols.forEach(s => s.veiculos.forEach(v => linhas.push([s.id, fmtDataHora(s.criado_em), s.usuario.username, s.usuario.nome, v.placa, v.marca_modelo, v.chassi,
-    v.ano_fab, v.ano_mod, v.tipo, v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "",
+    v.ano_fab, v.ano_mod, v.tipo, v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "", s.parcelas,
     STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_por && s.devolvida_por.nome, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
     s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(" + ")])));
   const a = document.createElement("a");
@@ -892,6 +934,7 @@ async function telaDetalhe(id) {
       <div><small>Data da solicitação</small>${fmtDataHora(s.criado_em)}</div>
       ${admin ? `<div><small>Prazo de retorno (48h úteis)</small>${fmtDataHora(s.prazo_em)}</div>` : ""}
       ${s.vigencia ? `<div><small>Vigência inicial</small>${fmtData(s.vigencia)}</div>` : ""}
+      ${s.parcelas > 1 ? `<div><small>Parcelamento solicitado</small>${s.parcelas}x</div>` : ""}
       ${s.numero_endosso ? `<div><small>Nº do endosso</small>${esc(s.numero_endosso)}</div>` : ""}
       ${s.devolvida_em ? `<div><small>Devolvido em</small>${fmtDataHora(s.devolvida_em)}</div>` : ""}
       ${s.devolvida_por ? `<div><small>Devolvido por</small>${esc(s.devolvida_por.nome)}</div>` : ""}
@@ -928,6 +971,13 @@ function blocoSp(s) {
     : `${NOME_ANEXO[a.tipo]}: <span class="tag bad">não arquivado</span> <small>${esc(a.sp_erro || "")}</small>`).join("<br>");
   return `<div class="docs"><b>Arquivo no SharePoint</b><div>${lin}</div>${s.anexos.some(a => !a.sp_url) ? '<button class="btn sec mini" id="reenviarSp">Tentar novamente</button>' : ""}</div>`;
 }
+// Parcelamento solicitado, recalculado com o valor FINAL (pode ter mudado na devolução)
+function infoParcelas(s, totalFinal) {
+  if (!(s.parcelas > 1)) return "";
+  const dias = Math.max(0, ...s.veiculos.map(v => v.dias ?? 0)), p = parcelamento(totalFinal, dias), o = p.opcoes.find(x => x.n === s.parcelas);
+  return o ? `<div class="ok"><b>Parcelamento:</b> ${o.n}x de ${brl(o.parcela)}${o.primeira !== o.parcela ? ` (1ª parcela ${brl(o.primeira)})` : ""}.</div>`
+           : `<div class="aviso"><b>Parcelamento solicitado: ${s.parcelas}x.</b> Com o valor final de ${brl(totalFinal)} ele não é mais possível (${esc(p.motivo || "o máximo agora é " + p.max + "x")}). O atendimento entrará em contato.</div>`;
+}
 const tipoTag = v => v.tipo[0] + v.tipo.slice(1).toLowerCase();
 function tabelaSolicitada(s) {
   return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Ano fab./mod.</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
@@ -942,6 +992,7 @@ function tabelaFinal(s, obs) {
     s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td>
       <td class="n">${valorTxt(v)}</td>${s.status === "ciente" ? `<td>${v.confirmado ? "Sim" : "<b>Não</b>"}</td>` : ""}</tr>`).join("")}</tbody>
     <tfoot><tr><td colspan="5" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td>${s.status === "ciente" ? "<td></td>" : ""}</tr></tfoot></table></div>
+    ${infoParcelas(s, s.total_final)}
     ${obs && s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}
     ${s.divergencia ? `<div class="aviso"><b>Divergência comunicada pelo cliente:</b><br>${esc(s.divergencia)}</div>` : ""}
     ${s.status === "ciente" && !s.divergencia ? `<div class="ok">O cliente declarou ter recebido e estar de acordo com as informações.</div>` : ""}`;
@@ -958,6 +1009,7 @@ function formDevolver(s) {
   }).join("");
   return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
     <tbody>${linhas}</tbody><tfoot><tr><td colspan="7" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
+    <div id="infoParc"></div>
     <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa.</div>
     <div class="grid">
       <div><label for="nEnd">Nº do endosso</label><input id="nEnd"></div>
@@ -969,7 +1021,7 @@ function formDevolver(s) {
 }
 function ligarDevolver(s) {
   const trs = () => [...document.querySelectorAll("#detalhe tbody tr")];
-  const total = () => { let t = 0; trs().forEach(tr => { const x = parseFloat(tr.querySelector(".vf").value); if (!isNaN(x)) t += x; }); $("totFinal").textContent = brl(t); };
+  const total = () => { let t = 0; trs().forEach(tr => { const x = parseFloat(tr.querySelector(".vf").value); if (!isNaN(x)) t += x; }); $("totFinal").textContent = brl(t); $("infoParc").innerHTML = s.parcelas > 1 ? infoParcelas(s, t) : (t > 0 ? '<div class="quem">Pagamento à vista (sem parcelamento solicitado).</div>' : ""); };
   trs().forEach(tr => {
     const ac = tr.querySelector(".ac"), vf = tr.querySelector(".vf");
     if (ac) ac.onchange = () => { vf.disabled = ac.checked; if (ac.checked) vf.value = "0"; else vf.value = s.veiculos.find(v => v.id == tr.dataset.vid).valor_calculado; total(); };
@@ -1001,6 +1053,7 @@ function formCiente(s) {
   return `<div class="aviso"><b>Seu endosso foi emitido.</b> Baixe o endosso (e o boleto, se houver) em "Documentos" e confira as informações abaixo${sens ? ", principalmente os veículos de exclusão e substituição" : ""}.</div>
     <div class="tw"><table><thead><tr><th>Confere</th><th>Veículo</th><th>Placa</th><th>Tipo</th><th>Contrato</th><th>Valor</th></tr></thead><tbody>${linhas}</tbody>
     <tfoot><tr><td colspan="5" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td></tr></tfoot></table></div>
+    ${infoParcelas(s, s.total_final)}
     ${s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}
     <label for="div">Comunicar divergência (se algum veículo não deveria constar, ou se faltou algum, descreva aqui)</label>
     <textarea id="div" placeholder="Se desmarcar algum veículo acima, explique aqui."></textarea>
