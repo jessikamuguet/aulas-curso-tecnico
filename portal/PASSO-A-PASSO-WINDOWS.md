@@ -134,6 +134,24 @@ Tudo (solicitações, usuários, PDFs) fica no arquivo `C:\portal\portal.db`. Se
 - **Você esqueceu a sua e não há outro administrador para ajudar:** dois cliques em **`redefinir-senha.bat`** no servidor, digite
   a nova senha duas vezes (ela não aparece enquanto você digita). Para outro usuário, use `venv\Scripts\python redefinir_senha.py usuario`.
 
+## E-mails do portal (opcional, mas recomendado)
+
+Com o e-mail configurado, o portal envia o **convite de cadastro** e o link do **"esqueci minha senha"**. Sem ele tudo funciona,
+só que o administrador precisa copiar e repassar os links que aparecem na tela.
+
+1. Peça à **TI** os dados de uma **conta de e-mail para o portal** (por exemplo `portal@suaempresa.com.br`): servidor SMTP, porta,
+   tipo de segurança, usuário e senha. (No Microsoft 365 costuma ser `smtp.office365.com`, porta 587, e a TI precisa liberar o
+   envio SMTP autenticado para essa caixa.)
+2. No `config.env`, apague o `#` das linhas `SMTP_...` e `PORTAL_URL` e preencha. Em `PORTAL_URL` vai o endereço que os clientes usam
+   para abrir o portal (é o que aparece nos links dos e-mails). Para o seu e-mail de administrador entrar por e-mail, preencha
+   `ADMIN_EMAIL`.
+3. Reinicie o portal (Passo 12).
+4. Teste: em **Usuários**, cadastre uma pessoa **sem senha** (use um e-mail seu) e veja se o convite chega. Se não chegar, olhe a
+   caixa de spam e peça à TI para conferir a conta SMTP.
+
+**Importante:** usuários antigos (criados antes desta versão) não têm e-mail. Em **Usuários**, clique em **E-mail** na linha de cada um
+para cadastrar. Até lá eles continuam entrando com o usuário e a senha de antes.
+
 ## Passo 11. Acesso pela internet (Opção B)
 
 Esta parte é da **TI**. Mande este pedido:

@@ -24,6 +24,20 @@ Para regerar depois de mudar algo em `static/`: `python build_demo.py`.
 
 **Hospedando no Windows?** Siga o [PASSO-A-PASSO-WINDOWS.md](PASSO-A-PASSO-WINDOWS.md) (instalador, início automático e backup prontos).
 
+## Login por e-mail, convites e senha por e-mail
+
+Todos entram com **e-mail** (ou usuário) e senha. No cadastro (*Usuários*), o administrador informa nome, e-mail e perfil:
+- **Sem senha:** a pessoa recebe um **convite por e-mail** com um link para definir a própria senha (vale 48 horas, uso único).
+- **Com senha temporária:** a pessoa recebe um aviso do cadastro por e-mail (sem a senha, que o administrador passa à parte).
+- **"Esqueci minha senha"** (tela de login): envia um link de redefinição (vale 1 hora, uso único). A resposta é a mesma exista ou
+  não o e-mail, para não revelar quem tem cadastro; há limite de pedidos por IP.
+- Em *Usuários* há também **Enviar link por e-mail** (reenviar convite/redefinição) e **E-mail** (corrigir o endereço).
+
+O envio usa SMTP, configurado em `config.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SEGURANCA`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`)
+e `PORTAL_URL` (endereço público, usado nos links). **Sem SMTP configurado** o portal funciona igual: o link do convite aparece na
+tela para o administrador repassar, e "esqueci minha senha" avisa que o envio não está disponível. Os links ficam no banco só como
+hash (não dá para recuperá-los). Para o administrador original poder entrar por e-mail, defina `ADMIN_EMAIL`.
+
 ## Fluxo
 
 1. **Admin** cria os usuários (menu *Usuários*): clientes e **até 5 administradores ativos**. Cada administrador tem login próprio;
@@ -66,6 +80,11 @@ modelo são obrigatórios no cadastro e na importação.
   trocar a própria senha em *Alterar senha* (no alto da tela); isso também encerra os outros acessos abertos dele.
 - **Cálculo:** custo dia = valor inicial ÷ 365; saldo = valor inicial − custo dia × dias (dias = data do endosso − vigência).
   O servidor recalcula tudo; não confia nos valores enviados pelo navegador.
+- **Data de vigência:** cada veículo (inclusão, exclusão **ou substituição**) tem a sua data de vigência, preenchida pelo cliente
+  (com opção de repetir a mesma data para todos). Na substituição ela é registrada, mas o valor segue em análise interna.
+- **Cancelamento:** o cliente cancela as próprias solicitações e o administrador, qualquer uma, **enquanto não devolvidas**, sempre
+  com **justificativa** (mínimo 10 caracteres). Fica registrado quem cancelou, quando e por quê (lista, detalhe e planilha).
+  Depois da devolução do endosso não há cancelamento por aqui.
 - **Parcelamento:** até **10x**, **parcela mínima de R$ 500,00**. O contrato dura 365 dias (12 meses) e o número de parcelas acompanha
   (pró rata) os meses que **restam** de vigência, no máximo 10; só é liberado até **10 meses de vigência decorridos** (depois
   disso, só à vista). Exemplos para R$ 8.000: contrato novo ou até ~2 meses = 10x; 5 meses decorridos = 7x; 10 meses = 2x; mais de

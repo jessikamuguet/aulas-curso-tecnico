@@ -54,20 +54,20 @@
     avisoSub();
     $("erro1").textContent = "";
     $("linhas").innerHTML = ""; $("mesmaCat").checked = false; $("mesmaData").checked = false;
-    vs.forEach(v => {
-      const tr = document.createElement("tr"); tr.dataset.tp = v.tp; tr._v = v;
-      tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl || "SEM PLACA")}</small></td><td>${v.tp}</td>
-        <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
+    todos.forEach(v => {
+      const tr = document.createElement("tr"), sub = v.tp === "SUBSTITUIÇÃO"; tr.dataset.tp = v.tp; tr._v = v;
+      tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl || "SEM PLACA")}${sub ? " (substitui " + esc(v.ps) + ")" : ""}</small></td><td>${v.tp}</td>
+        <td><input class="dt" type="date"></td><td>${sub ? "-" : '<input class="vi" type="number" step="0.01" min="0">'}</td>
         <td class="n r-dias">-</td><td class="n r-val">-</td>`;
       $("linhas").appendChild(tr);
     });
-    subsPend = subs; $("blocoCalc").hidden = !vs.length;
+    subsPend = subs; $("vigBox").hidden = !vs.length; // a vigência do contrato só é necessária para o cálculo (inclusão/exclusão)
     $("avisoExc2").hidden = !vs.some(v => v.tp === "EXCLUSÃO"); $("avisoExc2").textContent = AVISO_EXC;
     $("avisoSub2").hidden = !subs.length;
     $("avisoSub2").innerHTML = subs.length ? `Em análise interna (fora do cálculo): ${subs.map(v => esc(v.pl)).join(", ")}.` : "";
     const nomes = [...new Set(todos.map(v => v.tp.toLowerCase()))];
     $("termoTipo").textContent = nomes.length > 1 ? nomes.slice(0, -1).join(", ") + " e " + nomes.at(-1) : nomes[0];
-    $("mesmaCatBox").hidden = $("mesmaDataBox").hidden = vs.length < 2;
+    $("mesmaCatBox").hidden = vs.length < 2; $("mesmaDataBox").hidden = todos.length < 2;
     resetTermo(); recalcular(); etapa(2);
   };
   $("voltar").onclick = () => etapa(1);
@@ -233,8 +233,9 @@
     maxDias = 0;
     const vig = $("vig").value ? parse($("vig").value) : null;
     for (const tr of $("linhas").children) {
-      const q = s => tr.querySelector(s), data = q(".dt").value, vi = parseFloat(q(".vi").value);
+      const q = s => tr.querySelector(s), data = q(".dt").value, vi = q(".vi") ? parseFloat(q(".vi").value) : NaN; // substituição não tem valor inicial
       const set = (a,d) => { q(".r-dias").textContent=a; q(".r-val").textContent=d; };
+      if (tr.dataset.tp === "SUBSTITUIÇÃO") { set("-","em análise"); if (!data) completo = false; continue; } // sem cálculo: só a data de vigência
       if (!vig || !data || isNaN(vi)) { set("-","-"); completo = false; continue; }
       try {
         const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, tipo: tr.dataset.tp });
@@ -262,12 +263,10 @@
   }
   // Mesma categoria: repete o valor inicial do primeiro veículo nos demais
   function syncValor() {
-    const rows = [...$("linhas").children];
-    const rep = (cls, on) => rows.forEach((tr, i) => {
-      const el = tr.querySelector(cls);
-      if (i === 0) return;
-      el.disabled = on; if (on) el.value = rows[0].querySelector(cls).value;
-    });
+    const rep = (cls, on) => {
+      const rows = [...$("linhas").children].filter(tr => tr.querySelector(cls)); // substituição não tem valor inicial
+      rows.forEach((tr, i) => { if (i === 0) return; const el = tr.querySelector(cls); el.disabled = on; if (on) el.value = rows[0].querySelector(cls).value; });
+    };
     rep(".vi", $("mesmaCat").checked); rep(".dt", $("mesmaData").checked);
   }
   $("etapa2").addEventListener("input", () => { syncValor(); recalcular(); });
@@ -283,10 +282,11 @@
     if (enviando || total === null) return;
     enviando = true; $("prosseguir").disabled = true; $("erroEnvio").textContent = "";
     try {
-      const calc = [...$("linhas").children].map(tr => ({ marca_modelo: tr._v.mm, placa: tr._v.pl, chassi: tr._v.ch, ano_fab: +tr._v.af, ano_mod: +tr._v.am, contrato: tr._v.np,
-        tipo: tr._v.tp, data_endosso: tr.querySelector(".dt").value, valor_inicial: parseFloat(tr.querySelector(".vi").value) }));
-      const subs = subsPend.map(v => ({ marca_modelo: v.mm, placa: v.pl, chassi: v.ch, ano_fab: +v.af, ano_mod: +v.am, contrato: v.np, tipo: v.tp, placa_substituida: v.ps }));
-      const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, parcelas: $("blocoParcelas").hidden ? 1 : +$("parcelas").value || 1, veiculos: [...calc, ...subs] });
+      const linhas = [...$("linhas").children].map(tr => {
+        const v = tr._v, base = { marca_modelo: v.mm, placa: v.pl, chassi: v.ch, ano_fab: +v.af, ano_mod: +v.am, contrato: v.np, tipo: v.tp, data_endosso: tr.querySelector(".dt").value };
+        return v.tp === "SUBSTITUIÇÃO" ? { ...base, placa_substituida: v.ps } : { ...base, valor_inicial: parseFloat(tr.querySelector(".vi").value) };
+      });
+      const { solicitacao: s } = await API.post("/solicitacoes", { vigencia: $("vig").value, parcelas: $("blocoParcelas").hidden ? 1 : +$("parcelas").value || 1, veiculos: linhas });
       $("prosseguir").hidden = true; $("termo").disabled = true;
       $("okMsg").hidden = false;
       $("okMsg").innerHTML = `<b>Solicitação nº ${s.id} registrada</b> em ${fmtDataHora(s.criado_em)} para ${s.veiculos.length} veículo(s).<br>

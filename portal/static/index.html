@@ -15,16 +15,41 @@
   <button id="btnSenha" hidden>Alterar senha</button>
   <button id="sair" hidden>Sair</button>
 </header>
-<div class="demo" id="demoInfo" hidden>Modo demonstração: os dados ficam só neste navegador. Acessos de teste: <b>admin / admin123</b> (interno) e <b>cliente / cliente123</b>.</div>
+<div class="demo" id="demoInfo" hidden>Modo demonstração: os dados ficam só neste navegador. Acessos de teste (e-mail ou usuário): <b>admin@demo.com.br</b> ou <b>admin</b> / <b>admin123</b> (interno) e <b>cliente@demo.com.br</b> ou <b>cliente</b> / <b>cliente123</b>. O e-mail não é enviado de verdade: os links aparecem na tela.</div>
 <main>
   <section id="vLogin" class="card login" hidden>
     <h1>Acesso</h1>
     <form id="fLogin">
-      <label for="user">Usuário</label><input id="user" autocomplete="username" required>
+      <label for="user">E-mail ou usuário</label><input id="user" autocomplete="username" required>
       <label for="pass">Senha</label><input id="pass" type="password" autocomplete="current-password" required>
       <button class="btn">Entrar</button>
+      <p style="margin:12px 0 0"><a href="#/esqueci">Esqueci minha senha</a></p>
       <div class="erro" id="erroLogin"></div>
     </form>
+  </section>
+
+  <!-- Páginas públicas: esqueci a senha e definir senha pelo link recebido por e-mail -->
+  <section id="vEsqueci" class="card login" hidden>
+    <h1>Esqueci minha senha</h1>
+    <p class="quem">Informe o e-mail do seu cadastro. Se ele existir, enviaremos um link para você definir uma nova senha.</p>
+    <form id="fEsqueci">
+      <label for="eMail">E-mail</label><input id="eMail" type="email" autocomplete="email" required>
+      <button class="btn">Enviar link</button>
+      <div class="erro" id="erroEsqueci"></div><div class="ok" id="okEsqueci" hidden></div>
+      <p style="margin:12px 0 0"><a href="#/">Voltar ao login</a></p>
+    </form>
+  </section>
+  <section id="vDefinir" class="card login" hidden>
+    <h1>Definir senha</h1>
+    <p class="quem" id="definirOla"></p>
+    <form id="fDefinir">
+      <label for="dNova">Nova senha (mínimo 8 caracteres)</label><input id="dNova" type="password" autocomplete="new-password" required minlength="8">
+      <label for="dConf">Repita a nova senha</label><input id="dConf" type="password" autocomplete="new-password" required minlength="8">
+      <button class="btn">Salvar senha</button>
+      <div class="erro" id="erroDefinir"></div>
+    </form>
+    <div id="definirFim" hidden><div class="ok" id="okDefinir"></div><p><a class="btn" href="#/" id="irLogin" style="display:inline-block;text-decoration:none">Ir para o login</a></p></div>
+    <div id="definirInvalido" hidden><div class="aviso">Este link é inválido ou expirou.</div><p><a href="#/esqueci">Pedir um novo link</a></p></div>
   </section>
 
   <!-- Cliente: nova solicitação (assistente) -->
@@ -60,11 +85,11 @@
       <div class="card">
         <h2>2. Cálculo</h2>
         <div id="blocoCalc">
-        <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
+        <div class="grid" id="vigBox"><div><label for="vig">Início da vigência do contrato</label><input id="vig" type="date"></div></div>
         <label class="chkl" id="mesmaCatBox" hidden><input type="checkbox" id="mesmaCat"> Todos os veículos são da mesma categoria? Marque para repetir o valor inicial do primeiro veículo em todos</label>
-        <label class="chkl" id="mesmaDataBox" hidden><input type="checkbox" id="mesmaData"> Usar a mesma data do endosso para todos os veículos (repete a data do primeiro)</label>
+        <label class="chkl" id="mesmaDataBox" hidden><input type="checkbox" id="mesmaData"> Usar a mesma data de vigência para todos os veículos (repete a data do primeiro)</label>
         <div class="tw"><table>
-          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Dias</th><th>Valor</th></tr></thead>
+          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data de vigência</th><th>Valor inicial</th><th>Dias</th><th>Valor</th></tr></thead>
           <tbody id="linhas"></tbody>
           <tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
         </table></div>
@@ -96,7 +121,7 @@
   <section id="vMinhas" class="card" hidden>
     <h2>Minhas solicitações</h2>
     <div class="tw"><table>
-      <thead><tr><th>Nº</th><th>Solicitado em</th><th>Tipos</th><th>Veículos</th><th>Situação</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Solicitado em</th><th>Tipos</th><th>Veículos</th><th>Situação</th><th></th></tr></thead>
       <tbody id="listaMinhas"></tbody>
     </table></div>
     <div id="vazioMinhas" class="quem" hidden>Nenhuma solicitação ainda. Use "Nova solicitação".</div>
@@ -108,12 +133,12 @@
       <h2>Solicitações de endosso</h2>
       <select id="filtroStatus" style="width:auto">
         <option value="">Todas</option><option value="em_emissao">Em emissão</option>
-        <option value="devolvida">Devolvidas (aguardando ciência)</option><option value="ciente">Com ciência</option>
+        <option value="devolvida">Devolvidas (aguardando ciência)</option><option value="ciente">Com ciência</option><option value="cancelada">Canceladas</option>
       </select>
       <button class="btn sec mini" id="csv">Exportar CSV</button>
     </div>
     <div class="tw"><table>
-      <thead><tr><th>Nº</th><th>Solicitante</th><th>Solicitado em</th><th>Prazo (48h úteis)</th><th>Tipos</th><th>Veículos</th><th>Situação</th><th>Devolvido por</th></tr></thead>
+      <thead><tr><th>Nº</th><th>Solicitante</th><th>Solicitado em</th><th>Prazo (48h úteis)</th><th>Tipos</th><th>Veículos</th><th>Situação</th><th>Devolvido por</th><th></th></tr></thead>
       <tbody id="listaAdmin"></tbody>
     </table></div>
     <div id="vazioAdmin" class="quem" hidden>Nenhuma solicitação.</div>
@@ -123,15 +148,22 @@
   <section id="vUsuarios" hidden>
     <div class="card">
       <h2>Novo usuário</h2>
+      <p class="quem">A pessoa entra com o <b>e-mail</b> cadastrado. Deixando a senha em branco, ela recebe um convite por e-mail para definir a própria senha.</p>
       <p class="quem" id="contaAdmins"></p>
       <form id="fUsuario" class="grid">
         <div><label for="uNome">Nome</label><input id="uNome" required></div>
-        <div><label for="uUser">Usuário</label><input id="uUser" required autocomplete="off"></div>
+        <div><label for="uEmail">E-mail</label><input id="uEmail" type="email" required autocomplete="off"></div>
         <div><label for="uPerfil">Perfil</label><select id="uPerfil"><option value="cliente">Cliente</option><option value="admin">Administrador</option></select></div>
-        <div><label for="uPass">Senha (mín. 8 caracteres)</label><input id="uPass" type="password" required minlength="8" autocomplete="new-password"></div>
+        <div><label for="uPass">Senha temporária (opcional)</label><input id="uPass" type="password" minlength="8" autocomplete="new-password" placeholder="vazio = enviar convite por e-mail"></div>
         <div style="align-self:end"><button class="btn" style="margin:0">Criar usuário</button></div>
       </form>
       <div class="erro" id="erroUsuario"></div><div class="ok" id="okUsuario" hidden></div>
+    </div>
+    <div class="card" id="cardEmail" hidden>
+      <h2>Alterar e-mail de <span id="emailNome"></span></h2>
+      <div class="grid"><div><label for="emailNovo">Novo e-mail</label><input id="emailNovo" type="email" autocomplete="off"></div></div>
+      <button class="btn" id="emailOk">Salvar e-mail</button> <button class="btn sec" id="emailCancelar">Cancelar</button>
+      <div class="erro" id="erroEmail"></div>
     </div>
     <div class="card" id="cardReset" hidden>
       <h2>Redefinir senha de <span id="resetNome"></span></h2>
@@ -144,7 +176,7 @@
       <div class="erro" id="erroReset"></div><div class="ok" id="okReset" hidden></div>
     </div>
     <div class="card"><h2>Usuários</h2>
-      <div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
+      <div class="tw"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody id="listaUsuarios"></tbody></table></div>
     </div>
   </section>
 

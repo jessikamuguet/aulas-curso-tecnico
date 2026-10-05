@@ -3,7 +3,8 @@
 Rodar:  pip install -r requirements.txt && python app.py
 Variáveis opcionais: ADMIN_PASSWORD, SECRET_KEY, PORT, HTTPS=1 (cookie seguro), TRUST_PROXY=1, PORTAL_DB
 """
-import json, os, re, secrets, sqlite3, time
+import hashlib, json, logging, os, re, secrets, smtplib, sqlite3, threading, time
+from email.message import EmailMessage
 from urllib.parse import quote
 import requests
 from datetime import date, datetime, timedelta, timezone
@@ -67,13 +68,16 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, nome TEXT NOT NULL,
   password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('admin','cliente')), ativo INTEGER NOT NULL DEFAULT 1,
-  trocar_senha INTEGER NOT NULL DEFAULT 0, sessao INTEGER NOT NULL DEFAULT 0);
+  trocar_senha INTEGER NOT NULL DEFAULT 0, sessao INTEGER NOT NULL DEFAULT 0, email TEXT);
 CREATE TABLE IF NOT EXISTS solicitacoes (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
   criado_em TEXT NOT NULL, prazo_em TEXT NOT NULL, vigencia TEXT,
   status TEXT NOT NULL DEFAULT 'em_emissao', numero_endosso TEXT, observacao TEXT,
   devolvida_em TEXT, ciente_em TEXT, divergencia TEXT, devolvida_por INTEGER REFERENCES users(id),
-  parcelas INTEGER NOT NULL DEFAULT 1);
+  parcelas INTEGER NOT NULL DEFAULT 1, cancelada_em TEXT, cancelada_por INTEGER REFERENCES users(id), cancelamento_motivo TEXT);
+CREATE TABLE IF NOT EXISTS tokens (
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), hash TEXT UNIQUE NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('convite','reset')), expira_em TEXT NOT NULL, usado_em TEXT, criado_em TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS veiculos (
   id INTEGER PRIMARY KEY, solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes(id),
   marca_modelo TEXT, placa TEXT, chassi TEXT, contrato TEXT, tipo TEXT,
@@ -109,6 +113,15 @@ def init_db():
     for col in ('ano_fab', 'ano_mod'):  # bancos criados antes dos anos do veículo
         if col not in {r[1] for r in con.execute('PRAGMA table_info(veiculos)')}:
             con.execute(f'ALTER TABLE veiculos ADD COLUMN {col} INTEGER')
+    if 'email' not in {r[1] for r in con.execute('PRAGMA table_info(users)')}:  # bancos criados antes do login por e-mail
+        con.execute('ALTER TABLE users ADD COLUMN email TEXT')
+    con.execute('CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users(email) WHERE email IS NOT NULL')
+    adm_email = (os.environ.get('ADMIN_EMAIL') or '').strip().lower()  # e-mail do admin original, para bancos criados antes do login por e-mail
+    if adm_email and not con.execute("SELECT 1 FROM users WHERE email=?", (adm_email,)).fetchone():
+        con.execute("UPDATE users SET email=? WHERE username='admin' AND email IS NULL", (adm_email,))
+    for col in ('cancelada_em', 'cancelada_por', 'cancelamento_motivo'):  # bancos criados antes do cancelamento
+        if col not in {r[1] for r in con.execute('PRAGMA table_info(solicitacoes)')}:
+            con.execute(f'ALTER TABLE solicitacoes ADD COLUMN {col} ' + ('INTEGER' if col == 'cancelada_por' else 'TEXT'))
     for col, padrao in (('ativo', 1), ('trocar_senha', 0), ('sessao', 0)):  # bancos criados antes da gestão de usuários e senhas
         if col not in {r[1] for r in con.execute('PRAGMA table_info(users)')}:
             con.execute(f'ALTER TABLE users ADD COLUMN {col} INTEGER NOT NULL DEFAULT {padrao}')
@@ -123,8 +136,8 @@ def init_db():
         senha = os.environ.get("ADMIN_PASSWORD")
         gerada = not senha
         senha = senha or secrets.token_urlsafe(9)
-        con.execute("INSERT INTO users(username,nome,password_hash,role) VALUES('admin','Administrador',?, 'admin')",
-                    (generate_password_hash(senha),))
+        con.execute("INSERT INTO users(username,nome,password_hash,role,email) VALUES('admin','Administrador',?, 'admin',?)",
+                    (generate_password_hash(senha), (os.environ.get('ADMIN_EMAIL') or '').strip().lower() or None))
         con.commit()
         if gerada:  # só mostra a senha quando ela foi gerada aqui; se veio da configuração, nunca é impressa
             print(f"\n>>> Usuário admin criado. Login: admin | Senha: {senha}\n"
@@ -219,6 +232,90 @@ def arquivar_sharepoint(sid):
             url, erro_ = None, str(ex)[:300]
         db().execute("UPDATE anexos SET sp_url=?, sp_erro=? WHERE id=?", (url, erro_, a["id"]))
     db().commit()
+
+
+# ---------------------------------------------------------------- e-mail (convite de cadastro e redefinição de senha)
+# Desligado por padrão. Ligue definindo SMTP_HOST e SMTP_FROM (e, se o servidor exigir, SMTP_USER / SMTP_PASSWORD).
+# SMTP_PORT (587), SMTP_SEGURANCA = starttls (padrão) | ssl | nenhuma. PORTAL_URL = endereço público do portal, usado nos links.
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
+VALIDADE_CONVITE_H, VALIDADE_RESET_H = 48, 1
+log = logging.getLogger("portal")
+
+
+def email_ativo():
+    return bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_FROM"))
+
+
+def _smtp_enviar(dest, assunto, corpo):
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"] = os.environ["SMTP_FROM"], dest, assunto
+    msg.set_content(corpo)
+    host, porta = os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT", "587"))
+    modo = os.environ.get("SMTP_SEGURANCA", "starttls").lower()
+    srv = smtplib.SMTP_SSL(host, porta, timeout=20) if modo == "ssl" else smtplib.SMTP(host, porta, timeout=20)
+    try:
+        if modo == "starttls":
+            srv.starttls()
+        if os.environ.get("SMTP_USER"):
+            srv.login(os.environ["SMTP_USER"], os.environ.get("SMTP_PASSWORD", ""))
+        srv.send_message(msg)
+    finally:
+        try:
+            srv.quit()
+        except Exception:
+            pass
+
+
+def enviar_email(dest, assunto, corpo):
+    """Envia em segundo plano (a resposta ao usuário não depende do e-mail, nem revela se o endereço existe)."""
+    def tarefa():
+        try:
+            _smtp_enviar(dest, assunto, corpo)
+        except Exception as ex:  # rede, senha do SMTP, destinatário recusado...
+            log.error("Falha ao enviar e-mail para %s: %s", dest, ex)
+    t = threading.Thread(target=tarefa, daemon=True)
+    t.start()
+    return t
+
+
+def _hash_token(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def criar_token(uid, tipo):
+    """Cria um link de uso único (só o hash fica no banco). Tokens antigos não usados do mesmo usuário são invalidados."""
+    token = secrets.token_urlsafe(32)
+    horas = VALIDADE_CONVITE_H if tipo == "convite" else VALIDADE_RESET_H
+    db().execute("UPDATE tokens SET usado_em=? WHERE user_id=? AND usado_em IS NULL", (iso(agora()), uid))
+    db().execute("INSERT INTO tokens(user_id,hash,tipo,expira_em,criado_em) VALUES(?,?,?,?,?)",
+                 (uid, _hash_token(token), tipo, iso(agora() + timedelta(hours=horas)), iso(agora())))
+    db().commit()
+    return token
+
+
+def link_senha(token):
+    base = os.environ.get("PORTAL_URL", "").rstrip("/") or request.host_url.rstrip("/")
+    return f"{base}/#/definir-senha/{token}"
+
+
+def enviar_link(u, tipo):
+    """Cria o link e tenta enviar por e-mail. Devolve (enviado, link). Sem SMTP, devolve o link para o administrador repassar."""
+    token = criar_token(u["id"], tipo)
+    link = link_senha(token)
+    if not email_ativo() or not u["email"]:
+        return False, link
+    if tipo == "convite":
+        assunto = "Seu acesso ao Portal de Movimentações | Endossos"
+        corpo = (f"Olá, {u['nome']}.\n\nSeu acesso ao Portal de Movimentações | Endossos foi criado.\n"
+                 f"Para definir a sua senha, abra o link abaixo (vale por {VALIDADE_CONVITE_H} horas e só pode ser usado uma vez):\n\n{link}\n\n"
+                 f"Depois, entre com este e-mail ({u['email']}) ou com o usuário \"{u['username']}\".\n")
+    else:
+        assunto = "Redefinição de senha - Portal de Movimentações | Endossos"
+        corpo = (f"Olá, {u['nome']}.\n\nRecebemos um pedido para redefinir a sua senha. Abra o link abaixo para escolher uma nova "
+                 f"(vale por {VALIDADE_RESET_H} hora e só pode ser usado uma vez):\n\n{link}\n\n"
+                 "Se você não pediu isso, ignore este e-mail: a sua senha continua a mesma.\n")
+    enviar_email(u["email"], assunto, corpo)
+    return True, None
 
 
 # ---------------------------------------------------------------- regras
@@ -339,11 +436,15 @@ def serializa(s):
         for x in anexos:
             x.pop("sp_url"), x.pop("sp_erro")
     r = dict(s, usuario=dict(u), veiculos=vs, anexos=anexos, total_calculado=soma("valor_calculado"), total_final=soma("valor_final"))
+    canc = db().execute("SELECT u.nome, u.role FROM users u WHERE u.id=?", (s["cancelada_por"],)).fetchone() if s["cancelada_por"] else None
+    r["cancelada_por_perfil"] = canc["role"] if canc else None  # o cliente só sabe se foi ele ou o atendimento
     if quem and quem["role"] == "admin":
+        r["cancelada_por"] = {"nome": canc["nome"]} if canc else None
         resp = db().execute("SELECT id,nome,username FROM users WHERE id=?", (s["devolvida_por"],)).fetchone() if s["devolvida_por"] else None
         r["devolvida_por"] = dict(resp) if resp else None
     else:
         r.pop("devolvida_por", None)  # o cliente não vê qual administrador atendeu
+        r.pop("cancelada_por", None)
     return r
 
 
@@ -359,7 +460,7 @@ def login():
     tent, ate = _falhas.get(chave, (0, 0))
     if ate > time.time():
         return erro("Muitas tentativas. Aguarde um minuto e tente de novo.", 429)
-    u = db().execute("SELECT * FROM users WHERE username=?", (nome,)).fetchone()
+    u = db().execute("SELECT * FROM users WHERE username=? OR email=?", (nome, nome)).fetchone()
     if not u or not u["ativo"] or not check_password_hash(u["password_hash"], senha):
         tent += 1
         _falhas[chave] = (tent, time.time() + 60 if tent >= 5 else 0)
@@ -370,7 +471,7 @@ def login():
     session["sv"] = u["sessao"]
     return jsonify(user=dict(id=u["id"], nome=u["nome"], username=u["username"], role=u["role"],
                              sharepoint=sp_ativo() and u["role"] == "admin",
-                             trocar_senha=bool(u["trocar_senha"])))
+                             trocar_senha=bool(u["trocar_senha"]), email=u["email"]))
 
 
 @app.post("/api/logout")
@@ -386,7 +487,7 @@ def me():
         return e
     return jsonify(user=dict(id=u["id"], nome=u["nome"], username=u["username"], role=u["role"],
                              sharepoint=sp_ativo() and u["role"] == "admin",
-                             trocar_senha=bool(u["trocar_senha"])))
+                             trocar_senha=bool(u["trocar_senha"]), email=u["email"]))
 
 
 def _bloqueado(chave):
@@ -430,33 +531,155 @@ def usuarios():
     _, e = exige_login(admin=True)
     if e:
         return e
-    rows = db().execute("SELECT id,username,nome,role,ativo FROM users ORDER BY role, nome").fetchall()
+    rows = db().execute("SELECT id,username,nome,role,ativo,email FROM users ORDER BY role, nome").fetchall()
     return jsonify(usuarios=[dict(r, ativo=bool(r["ativo"])) for r in rows], limite_admins=MAX_ADMINS, admins_ativos=admins_ativos())
+
+
+def _usuario_livre(base):
+    """Nome de usuário derivado do e-mail (parte antes do @), único."""
+    base = re.sub(r"[^a-z0-9._-]", "", base.lower())[:24] or "usuario"
+    base = base if len(base) >= 3 else base + "usr"
+    cand, n = base, 1
+    while db().execute("SELECT 1 FROM users WHERE username=?", (cand,)).fetchone():
+        n += 1
+        cand = f"{base}{n}"
+    return cand
+
+
+def _email_valido(txt):
+    txt = str(txt or "").strip().lower()
+    return txt if EMAIL_RE.match(txt) else None
 
 
 @app.post("/api/usuarios")
 def criar_usuario():
+    """Cadastro. Sem senha informada, a pessoa recebe um convite por e-mail para definir a própria senha."""
     _, e = exige_login(admin=True)
     if e:
         return e
     d = request.get_json(silent=True) or {}
-    nome, user, senha = str(d.get("nome", "")).strip(), str(d.get("username", "")).strip().lower(), str(d.get("password", ""))
-    if not nome or not re.fullmatch(r"[a-z0-9._-]{3,30}", user):
-        return erro("Informe o nome e um usuário de 3 a 30 caracteres (letras, números, ponto, hífen).")
-    if len(senha) < 8:
+    nome, senha = str(d.get("nome", "")).strip(), str(d.get("password", ""))
+    email = _email_valido(d.get("email"))
+    if not nome:
+        return erro("Informe o nome.")
+    if not email:
+        return erro("Informe um e-mail válido.")
+    user = str(d.get("username", "")).strip().lower() or _usuario_livre(email.split("@")[0])
+    if not re.fullmatch(r"[a-z0-9._-]{3,30}", user):
+        return erro("O usuário deve ter de 3 a 30 caracteres (letras, números, ponto, hífen).")
+    if senha and len(senha) < 8:
         return erro("A senha precisa ter pelo menos 8 caracteres.")
     perfil = d.get("role", "cliente")
     if perfil not in ("cliente", "admin"):
         return erro("Perfil inválido.")
     if perfil == "admin" and admins_ativos() >= MAX_ADMINS:
         return erro(f"Limite de {MAX_ADMINS} administradores atingido. Desative um administrador para cadastrar outro.", 409)
+    if db().execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+        return erro("Já existe um usuário com esse e-mail.", 409)
     try:
-        db().execute("INSERT INTO users(username,nome,password_hash,role) VALUES(?,?,?,?)",
-                     (user, nome, generate_password_hash(senha), perfil))
+        cur = db().execute("INSERT INTO users(username,nome,password_hash,role,email) VALUES(?,?,?,?,?)",
+                           (user, nome, generate_password_hash(senha or secrets.token_urlsafe(32)), perfil, email))
         db().commit()
     except sqlite3.IntegrityError:
         return erro("Esse usuário já existe.", 409)
-    return jsonify(ok=True), 201
+    resp = dict(ok=True, username=user)
+    if not senha:  # convite: a pessoa define a própria senha pelo link
+        novo_u = db().execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
+        enviado, link = enviar_link(novo_u, "convite")
+        resp.update(convite="enviado" if enviado else "link", link=link)
+    elif email_ativo():  # senha definida pelo administrador: avisa do cadastro (sem a senha, que é passada à parte)
+        base = os.environ.get("PORTAL_URL", "").rstrip("/") or request.host_url.rstrip("/")
+        enviar_email(email, "Seu cadastro no Portal de Movimentações | Endossos",
+                     f"Olá, {nome}.\n\nSeu cadastro no Portal de Movimentações | Endossos foi criado.\n\nEndereço: {base}\n"
+                     f"Entre com este e-mail ({email}) ou com o usuário \"{user}\". A senha será informada pelo administrador.\n")
+        resp.update(convite="aviso")
+    return jsonify(resp), 201
+
+
+@app.post("/api/usuarios/<int:uid>/enviar-link")
+def enviar_link_usuario(uid):
+    """Reenvia por e-mail o link para a pessoa definir uma nova senha (convite ou redefinição)."""
+    _, e = exige_login(admin=True)
+    if e:
+        return e
+    alvo = db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    if not alvo:
+        return erro("Usuário não encontrado.", 404)
+    if not alvo["ativo"]:
+        return erro("Reative o usuário antes de enviar o link.", 409)
+    enviado, link = enviar_link(alvo, "convite")
+    return jsonify(ok=True, convite="enviado" if enviado else "link", link=link)
+
+
+@app.post("/api/usuarios/<int:uid>/email")
+def alterar_email(uid):
+    _, e = exige_login(admin=True)
+    if e:
+        return e
+    email = _email_valido((request.get_json(silent=True) or {}).get("email"))
+    if not email:
+        return erro("Informe um e-mail válido.")
+    if not db().execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
+        return erro("Usuário não encontrado.", 404)
+    if db().execute("SELECT 1 FROM users WHERE email=? AND id<>?", (email, uid)).fetchone():
+        return erro("Já existe um usuário com esse e-mail.", 409)
+    db().execute("UPDATE users SET email=? WHERE id=?", (email, uid))
+    db().commit()
+    return jsonify(ok=True)
+
+
+# ---- "Esqueci minha senha" e definição de senha pelo link (sem login)
+@app.post("/api/esqueci-senha")
+def esqueci_senha():
+    chave = (request.remote_addr, "esqueci")
+    if _bloqueado(chave):
+        return erro("Muitos pedidos. Aguarde alguns minutos e tente de novo.", 429)
+    _falhou(chave)  # limita pedidos por IP (5 por vez)
+    if not email_ativo():
+        return erro("O envio de e-mails não está configurado neste portal. Peça a um administrador para redefinir a sua senha.", 503)
+    email = _email_valido((request.get_json(silent=True) or {}).get("email"))
+    if email:
+        u = db().execute("SELECT * FROM users WHERE email=? AND ativo=1", (email,)).fetchone()
+        if u:
+            enviar_link(u, "reset")
+    # resposta igual exista ou não o e-mail: não revela quem tem cadastro
+    return jsonify(ok=True, mensagem="Se esse e-mail estiver cadastrado, você receberá um link para definir uma nova senha em alguns minutos.")
+
+
+def _token_valido(token):
+    row = db().execute("SELECT * FROM tokens WHERE hash=?", (_hash_token(str(token)),)).fetchone()
+    if not row or row["usado_em"] or row["expira_em"] < iso(agora()):
+        return None
+    u = db().execute("SELECT * FROM users WHERE id=?", (row["user_id"],)).fetchone()
+    return (row, u) if u and u["ativo"] else None
+
+
+@app.get("/api/definir-senha/<token>")
+def conferir_link(token):
+    r = _token_valido(token)
+    if not r:
+        return erro("Este link é inválido ou expirou. Peça um novo.", 404)
+    return jsonify(nome=r[1]["nome"], tipo=r[0]["tipo"])
+
+
+@app.post("/api/definir-senha")
+def definir_senha():
+    chave = (request.remote_addr, "definir")
+    if _bloqueado(chave):
+        return erro("Muitas tentativas. Aguarde um minuto e tente de novo.", 429)
+    d = request.get_json(silent=True) or {}
+    r = _token_valido(d.get("token", ""))
+    if not r:
+        _falhou(chave)
+        return erro("Este link é inválido ou expirou. Peça um novo.", 400)
+    senha = str(d.get("senha", ""))
+    if len(senha) < 8:
+        return erro("A senha precisa ter pelo menos 8 caracteres.")
+    row, u = r
+    db().execute("UPDATE users SET password_hash=?, trocar_senha=0, sessao=sessao+1 WHERE id=?", (generate_password_hash(senha), u["id"]))
+    db().execute("UPDATE tokens SET usado_em=? WHERE id=?", (iso(agora()), row["id"]))
+    db().commit()
+    return jsonify(ok=True, usuario=u["username"], email=u["email"])
 
 
 @app.post("/api/usuarios/<int:uid>/senha")
@@ -578,13 +801,13 @@ def criar_solicitacao():
             if tipo == "SUBSTITUIÇÃO" and not ps:
                 raise ValueError(f"Veículo {i}: informe a placa do veículo substituído.")
             dias = valor_calc = data_e = vi = None
+            de = _data(v.get("data_endosso"), f"Veículo {i}: data de vigência")  # obrigatória nos 3 tipos
+            data_e = de.isoformat()
             if tipo != "SUBSTITUIÇÃO":
-                de = _data(v.get("data_endosso"), f"Veículo {i}: data do endosso")
                 vi = float(v.get("valor_inicial"))
                 if vi < 0:
                     raise ValueError(f"Veículo {i}: valor inicial inválido.")
                 dias, valor_calc = calcular(tipo, vig, de, vi)
-                data_e = de.isoformat()
             linhas.append((mm[:120], placa, chassi, str(v.get("contrato", "")).strip()[:60], tipo,
                            ps or None, data_e, vi, dias, valor_calc, af, am))
     except (ValueError, TypeError) as ex:
@@ -716,6 +939,28 @@ def baixar_anexo(sid, tipo):
     return r
 
 
+@app.post("/api/solicitacoes/<int:sid>/cancelar")
+def cancelar(sid):
+    """Cancela uma solicitação ainda não devolvida. O cliente cancela as próprias; o administrador, qualquer uma. Exige justificativa."""
+    u, e = exige_login()
+    if e:
+        return e
+    s = db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()
+    if not s or (u["role"] != "admin" and s["user_id"] != u["id"]):
+        return erro("Solicitação não encontrada.", 404)
+    if s["status"] == "cancelada":
+        return erro("Esta solicitação já foi cancelada.", 409)
+    if s["status"] != "em_emissao":
+        return erro("Só é possível cancelar solicitações que ainda não foram devolvidas.", 409)
+    motivo = str((request.get_json(silent=True) or {}).get("motivo", "")).strip()
+    if len(motivo) < 10:
+        return erro("Descreva a justificativa do cancelamento (mínimo de 10 caracteres).")
+    db().execute("UPDATE solicitacoes SET status='cancelada', cancelada_em=?, cancelada_por=?, cancelamento_motivo=? WHERE id=?",
+                 (iso(agora()), u["id"], motivo[:2000], sid))
+    db().commit()
+    return jsonify(solicitacao=serializa(db().execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()))
+
+
 @app.post("/api/solicitacoes/<int:sid>/arquivar")
 def reenviar_sharepoint(sid):
     _, e = exige_login(admin=True)
@@ -726,8 +971,8 @@ def reenviar_sharepoint(sid):
         return erro("Solicitação não encontrada.", 404)
     if not sp_ativo():
         return erro("A integração com o SharePoint não está configurada.")
-    if s["status"] == "em_emissao":
-        return erro("Devolva o endosso antes de arquivar.", 409)
+    if s["status"] in ("em_emissao", "cancelada"):
+        return erro("Só é possível arquivar solicitações já devolvidas.", 409)
     arquivar_sharepoint(sid)
     return jsonify(solicitacao=serializa(s))
 

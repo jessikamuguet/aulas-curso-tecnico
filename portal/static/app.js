@@ -1,9 +1,9 @@
 // Navegação, perfis (admin/cliente) e telas do portal
 let USER = null;
-const VIEWS = ["vLogin","vNova","vMinhas","vAdmin","vUsuarios","vDetalhe","vSenha"];
+const VIEWS = ["vLogin","vNova","vMinhas","vAdmin","vUsuarios","vDetalhe","vSenha","vEsqueci","vDefinir"];
 const show = id => VIEWS.forEach(v => $(v).hidden = v !== id);
-const STATUS_ADMIN = { em_emissao: "Em emissão", devolvida: "Devolvida (aguardando ciência)", ciente: "Com ciência" };
-const STATUS_CLIENTE = { em_emissao: "Solicitação em processo de emissão", devolvida: "Endosso devolvido: aguardando sua ciência", ciente: "Concluída" };
+const STATUS_ADMIN = { em_emissao: "Em emissão", devolvida: "Devolvida (aguardando ciência)", ciente: "Com ciência", cancelada: "Cancelada" };
+const STATUS_CLIENTE = { em_emissao: "Solicitação em processo de emissão", devolvida: "Endosso devolvido: aguardando sua ciência", ciente: "Concluída", cancelada: "Cancelada" };
 const tiposTxt = s => [...new Set(s.veiculos.map(v => v.tipo))].map(t => t[0] + t.slice(1).toLowerCase()).join(", ");
 
 function prazoTxt(s) {
@@ -13,7 +13,7 @@ function prazoTxt(s) {
   return h < 0 ? `<span class="tag bad">Atrasada há ${dur}</span>` : `<span class="tag warn">Restam ${dur}</span>`;
 }
 function badgeAdmin(s) {
-  const c = s.status === "em_emissao" ? "warn" : s.status === "ciente" ? "good" : "";
+  const c = s.status === "em_emissao" ? "warn" : s.status === "ciente" ? "good" : s.status === "cancelada" ? "off" : "";
   return `<span class="tag ${c}">${STATUS_ADMIN[s.status]}</span>` + (s.divergencia ? ` <span class="tag bad">Divergência</span>` : "");
 }
 
@@ -29,13 +29,13 @@ function montarMenu() {
 function marcarMenu() { document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.dataset.h === (location.hash.split("/").slice(0, 2).join("/")))); }
 
 async function rota() {
-  if (!USER) { show("vLogin"); return; }
-  const [, p, id] = location.hash.split("/"), admin = USER.role === "admin";
+  if (!USER) return rotaPublica();
+  const [, p, id, acao] = location.hash.split("/"), admin = USER.role === "admin";
   marcarMenu();
   if (USER.trocar_senha && p !== "senha") { location.hash = "#/senha"; return; } // senha temporária: precisa trocar antes de tudo
   if (p === "senha") return telaSenha();
   try {
-    if (p === "s" && id) return await telaDetalhe(+id);
+    if (p === "s" && id) return await telaDetalhe(+id, acao === "cancelar");
     if (admin && p === "usuarios") return await telaUsuarios();
     if (admin && p === "admin") return await telaAdmin();
     if (!admin && p === "minhas") return await telaMinhas();
@@ -68,10 +68,14 @@ async function telaMinhas() {
   const { solicitacoes } = await API.get("/solicitacoes");
   $("vazioMinhas").hidden = solicitacoes.length > 0;
   $("listaMinhas").innerHTML = solicitacoes.map(s => `<tr class="click" data-id="${s.id}"><td>${s.id}</td><td>${fmtDataHora(s.criado_em)}</td>
-    <td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td><span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span></td></tr>`).join("");
+    <td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td><span class="tag ${s.status === "ciente" ? "good" : s.status === "cancelada" ? "off" : "warn"}">${STATUS_CLIENTE[s.status]}</span></td>
+    <td>${s.status === "em_emissao" ? `<button class="btn sec mini" data-cancelar="${s.id}">Cancelar solicitação</button>` : ""}</td></tr>`).join("");
   show("vMinhas");
 }
-for (const t of ["listaMinhas", "listaAdmin"]) $(t).onclick = e => { const tr = e.target.closest("tr[data-id]"); if (tr) location.hash = "#/s/" + tr.dataset.id; };
+for (const t of ["listaMinhas", "listaAdmin"]) $(t).onclick = e => {
+  const c = e.target.closest("button[data-cancelar]"); if (c) { location.hash = "#/s/" + c.dataset.cancelar + "/cancelar"; return; }
+  const tr = e.target.closest("tr[data-id]"); if (tr) location.hash = "#/s/" + tr.dataset.id;
+};
 
 // ---------- admin: lista e relatório
 let LISTA = [];
@@ -87,19 +91,21 @@ function filtradas() {
 function desenharAdmin() {
   const l = filtradas(); $("vazioAdmin").hidden = l.length > 0;
   $("listaAdmin").innerHTML = l.map(s => `<tr class="click" data-id="${s.id}"><td>${s.id}</td><td>${esc(s.usuario.nome)}<br><small>${esc(s.usuario.username)}</small></td>
-    <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td><td>${s.devolvida_por ? esc(s.devolvida_por.nome) : "-"}</td></tr>`).join("");
+    <td>${fmtDataHora(s.criado_em)}</td><td>${fmtDataHora(s.prazo_em)} ${prazoTxt(s)}</td><td>${esc(tiposTxt(s))}</td><td>${s.veiculos.length}</td><td>${badgeAdmin(s)}</td><td>${s.devolvida_por ? esc(s.devolvida_por.nome) : "-"}</td>
+    <td>${s.status === "em_emissao" ? `<button class="btn sec mini" data-cancelar="${s.id}">Cancelar</button>` : ""}</td></tr>`).join("");
 }
 $("filtroStatus").onchange = desenharAdmin;
 // Planilha para o administrativo: uma linha por veículo, com os dados do veículo e o valor da pró rata
 const numBR = v => v == null ? "" : v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function baixarPlanilha(sols, arquivo) {
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const linhas = [["Nº solicitação","Data da solicitação","Usuário","Nome","Placa","Marca/Modelo","Chassi","Ano fabricação","Ano modelo","Tipo","Contrato",
-    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Parcelas solicitadas","Situação","Prazo","Nº endosso","Devolvido por","Devolvida em","Ciência em","Divergência","Anexos"]];
+  const linhas = [["Nº solicitação","Data da solicitação","Usuário","Nome","Placa","Marca/Modelo","Chassi","Ano fabricação","Ano modelo","Tipo","Data de vigência","Contrato",
+    "Valor pró rata (calculado)","Valor final (devolvido)","Acionamento","Parcelas solicitadas","Situação","Prazo","Nº endosso","Devolvido por","Devolvida em","Ciência em","Divergência","Anexos","Cancelada em","Cancelada por","Motivo do cancelamento"]];
   sols.forEach(s => s.veiculos.forEach(v => linhas.push([s.id, fmtDataHora(s.criado_em), s.usuario.username, s.usuario.nome, v.placa, v.marca_modelo, v.chassi,
-    v.ano_fab, v.ano_mod, v.tipo, v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "", s.parcelas,
+    v.ano_fab, v.ano_mod, v.tipo, fmtData(v.data_endosso), v.contrato, numBR(v.valor_calculado), numBR(v.valor_final), v.tipo === "EXCLUSÃO" && s.status !== "em_emissao" ? (v.acionamento ? "Sim" : "Não") : "", s.parcelas,
     STATUS_ADMIN[s.status], fmtDataHora(s.prazo_em), s.numero_endosso, s.devolvida_por && s.devolvida_por.nome, s.devolvida_em && fmtDataHora(s.devolvida_em), s.ciente_em && fmtDataHora(s.ciente_em),
-    s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(" + ")])));
+    s.divergencia, s.anexos.map(a => NOME_ANEXO[a.tipo]).join(" + "), s.cancelada_em && fmtDataHora(s.cancelada_em),
+    s.cancelada_por ? s.cancelada_por.nome : (s.cancelada_por_perfil === "cliente" ? "Cliente" : ""), s.cancelamento_motivo])));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff" + linhas.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv" }));
   a.download = arquivo; a.click();
@@ -111,28 +117,47 @@ async function telaUsuarios() {
   const { usuarios, limite_admins: lim, admins_ativos: n } = await API.get("/usuarios");
   $("contaAdmins").textContent = `Administradores ativos: ${n} de ${lim}.${n >= lim ? " Para cadastrar outro, desative um administrador." : ""}`;
   $("uPerfil").querySelector("option[value=admin]").disabled = n >= lim;
-  $("listaUsuarios").innerHTML = usuarios.map(u => `<tr><td>${esc(u.nome)}</td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administrador" : "Cliente"}</td>
+  $("listaUsuarios").innerHTML = usuarios.map(u => `<tr><td>${esc(u.nome)}</td><td>${u.email ? esc(u.email) : "<small class=\"quem\">sem e-mail</small>"}</td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administrador" : "Cliente"}</td>
     <td><span class="tag ${u.ativo ? "good" : "bad"}">${u.ativo ? "Ativo" : "Desativado"}</span></td>
-    <td>${u.id === USER.id ? "<small class=\"quem\">você</small>" : `<button class="btn sec mini" data-uid="${u.id}" data-ativo="${!u.ativo}">${u.ativo ? "Desativar" : "Reativar"}</button> <button class="btn sec mini" data-reset="${u.id}" data-nome="${esc(u.nome)}">Redefinir senha</button>`}</td></tr>`).join("");
+    <td>${u.id === USER.id ? "<small class=\"quem\">você</small>" : `<button class="btn sec mini" data-uid="${u.id}" data-ativo="${!u.ativo}">${u.ativo ? "Desativar" : "Reativar"}</button> <button class="btn sec mini" data-reset="${u.id}" data-nome="${esc(u.nome)}">Redefinir senha</button>${u.ativo ? ` <button class="btn sec mini" data-link="${u.id}" data-nome="${esc(u.nome)}">Enviar link por e-mail</button>` : ""}`} <button class="btn sec mini" data-email="${u.id}" data-nome="${esc(u.nome)}" data-atual="${esc(u.email || "")}">E-mail</button></td></tr>`).join("");
   show("vUsuarios");
 }
 $("listaUsuarios").onclick = async e => {
   const r = e.target.closest("button[data-reset]");
   if (r) { abrirReset(+r.dataset.reset, r.dataset.nome); return; }
+  const em = e.target.closest("button[data-email]");
+  if (em) { emailId = +em.dataset.email; $("emailNome").textContent = em.dataset.nome; $("emailNovo").value = em.dataset.atual; $("erroEmail").textContent = ""; $("cardEmail").hidden = false; return; }
+  const lk = e.target.closest("button[data-link]");
+  if (lk) { $("erroUsuario").textContent = ""; try { mostrarConvite(await API.post(`/usuarios/${lk.dataset.link}/enviar-link`), lk.dataset.nome); } catch (err) { $("erroUsuario").textContent = err.message; } return; }
   const b = e.target.closest("button[data-uid]"); if (!b) return;
   $("erroUsuario").textContent = "";
   try { await API.post(`/usuarios/${b.dataset.uid}/ativo`, { ativo: b.dataset.ativo === "true" }); await telaUsuarios(); } catch (err) { $("erroUsuario").textContent = err.message; }
 };
+// Resultado de convite/link: enviado por e-mail, ou (sem SMTP) o link para o administrador repassar
+function mostrarConvite(r, nome) {
+  $("okUsuario").hidden = false;
+  if (r.convite === "enviado") $("okUsuario").textContent = `Link enviado por e-mail para ${nome}. Ele vale por 48 horas e só pode ser usado uma vez.`;
+  else if (r.convite === "link") $("okUsuario").innerHTML = `O envio de e-mail não está configurado neste portal. Copie o link abaixo e envie a ${esc(nome)} (vale por 48 horas, uso único):<br><code style="word-break:break-all">${esc(r.link)}</code>`;
+  else if (r.convite === "aviso") $("okUsuario").textContent = `Cadastro criado. ${nome} recebeu um aviso por e-mail (sem a senha, que você informa à parte).`;
+  else $("okUsuario").textContent = "Usuário criado.";
+}
 $("fUsuario").onsubmit = async e => {
   e.preventDefault(); $("erroUsuario").textContent = ""; $("okUsuario").hidden = true;
   try {
-    await API.post("/usuarios", { nome: $("uNome").value, username: $("uUser").value, password: $("uPass").value, role: $("uPerfil").value });
-    $("okUsuario").hidden = false; $("okUsuario").textContent = `Usuário ${$("uUser").value} criado.`; e.target.reset(); await telaUsuarios();
+    const nome = $("uNome").value, r = await API.post("/usuarios", { nome, email: $("uEmail").value, password: $("uPass").value, role: $("uPerfil").value });
+    mostrarConvite(r, nome); if (r.username) $("okUsuario").append(` Usuário: ${r.username}.`); e.target.reset(); await telaUsuarios();
   } catch (err) { $("erroUsuario").textContent = err.message; }
+};
+let emailId = null;
+$("emailCancelar").onclick = () => { $("cardEmail").hidden = true; };
+$("emailOk").onclick = async () => {
+  $("erroEmail").textContent = "";
+  try { await API.post(`/usuarios/${emailId}/email`, { email: $("emailNovo").value }); $("cardEmail").hidden = true; await telaUsuarios(); }
+  catch (err) { $("erroEmail").textContent = err.message; }
 };
 
 // ---------- detalhe: admin devolve; cliente dá ciência
-async function telaDetalhe(id) {
+async function telaDetalhe(id, abrirCancelar = false) {
   const { solicitacao: s } = await API.get("/solicitacoes/" + id);
   const admin = USER.role === "admin";
   const cab = `<div class="topo"><h2>Solicitação nº ${s.id}</h2>${admin ? badgeAdmin(s) + " " + prazoTxt(s) + ' <button class="btn sec mini" id="baixarSol">Baixar planilha</button>' : `<span class="tag ${s.status === "ciente" ? "good" : "warn"}">${STATUS_CLIENTE[s.status]}</span>`}</div>
@@ -148,11 +173,13 @@ async function telaDetalhe(id) {
       ${s.ciente_em ? `<div><small>Ciência em</small>${fmtDataHora(s.ciente_em)}</div>` : ""}
     </div>`;
   let corpo;
-  if (admin) corpo = s.status === "em_emissao" ? formDevolver(s) : tabelaFinal(s, true);
+  if (s.status === "cancelada") corpo = bannerCancelada(s, admin) + tabelaSolicitada(s);
+  else if (admin) corpo = s.status === "em_emissao" ? formDevolver(s) : tabelaFinal(s, true);
   else if (s.status === "em_emissao") corpo = `<div class="aviso"><b>Solicitação em processo de emissão.</b></div>${tabelaSolicitada(s)}`;
   else if (s.status === "devolvida") corpo = formCiente(s);
   else corpo = tabelaFinal(s, true);
-  $("detalhe").innerHTML = `<div class="card">${cab}${blocoAnexos(s)}${blocoSp(s)}${corpo}</div>`;
+  $("detalhe").innerHTML = `<div class="card">${cab}${blocoCancelar(s)}${blocoAnexos(s)}${blocoSp(s)}${corpo}</div>`;
+  ligarCancelar(s, abrirCancelar);
   if (admin) $("baixarSol").onclick = () => baixarPlanilha([s], `solicitacao-${s.id}.csv`);
   if (admin && s.status === "em_emissao") ligarDevolver(s);
   if (!admin && s.status === "devolvida") ligarCiente(s);
@@ -187,18 +214,18 @@ function infoParcelas(s, totalFinal) {
 }
 const tipoTag = v => v.tipo[0] + v.tipo.slice(1).toLowerCase();
 function tabelaSolicitada(s) {
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Ano fab./mod.</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
-    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}</td><td>${esc(v.chassi)}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${esc(v.contrato)}</td><td>${tipoTag(v)}</td><td>${esc(v.placa_substituida || "-")}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Chassi</th><th>Ano fab./mod.</th><th>Vigência</th><th>Contrato</th><th>Tipo</th><th>Placa substituída</th></tr></thead><tbody>${
+    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}</td><td>${esc(v.chassi)}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${fmtData(v.data_endosso)}</td><td>${esc(v.contrato)}</td><td>${tipoTag(v)}</td><td>${esc(v.placa_substituida || "-")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function valorTxt(v) {
   if (v.tipo === "EXCLUSÃO" && v.acionamento) return `${brl(0)} <span class="tag bad">Acionamento: sem restituição</span>`;
   return brl(v.valor_final);
 }
 function tabelaFinal(s, obs) {
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Tipo</th><th>Contrato</th><th>Valor</th>${s.status === "ciente" ? "<th>Confere</th>" : ""}</tr></thead><tbody>${
-    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td>
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Vigência</th><th>Tipo</th><th>Contrato</th><th>Valor</th>${s.status === "ciente" ? "<th>Confere</th>" : ""}</tr></thead><tbody>${
+    s.veiculos.map(v => `<tr><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${v.placa_substituida ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td><td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${fmtData(v.data_endosso)}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td>
       <td class="n">${valorTxt(v)}</td>${s.status === "ciente" ? `<td>${v.confirmado ? "Sim" : "<b>Não</b>"}</td>` : ""}</tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="5" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td>${s.status === "ciente" ? "<td></td>" : ""}</tr></tfoot></table></div>
+    <tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n">${brl(s.total_final)}</td>${s.status === "ciente" ? "<td></td>" : ""}</tr></tfoot></table></div>
     ${infoParcelas(s, s.total_final)}
     ${obs && s.observacao ? `<p><small class="quem">Observação do atendimento</small><br>${esc(s.observacao)}</p>` : ""}
     ${s.divergencia ? `<div class="aviso"><b>Divergência comunicada pelo cliente:</b><br>${esc(s.divergencia)}</div>` : ""}
@@ -210,12 +237,12 @@ function formDevolver(s) {
   const linhas = s.veiculos.map(v => {
     const exc = v.tipo === "EXCLUSÃO", sub = v.tipo === "SUBSTITUIÇÃO";
     return `<tr data-vid="${v.id}" data-tipo="${v.tipo}"><td>${esc(v.marca_modelo)}</td><td>${esc(v.placa)}${sub ? `<br><small>substitui ${esc(v.placa_substituida)}</small>` : ""}</td>
-      <td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${sub ? "-" : brl(v.valor_calculado)}</td>
+      <td>${v.ano_fab ?? "-"}/${v.ano_mod ?? "-"}</td><td>${fmtData(v.data_endosso)}</td><td>${tipoTag(v)}</td><td>${esc(v.contrato)}</td><td class="n">${sub ? "-" : brl(v.valor_calculado)}</td>
       <td>${exc ? '<label class="chkl" style="margin:0"><input type="checkbox" class="ac"> Teve acionamento</label>' : "-"}</td>
       <td><input class="vf" type="number" step="0.01" style="min-width:120px" value="${v.valor_calculado ?? ""}" ${sub ? 'placeholder="informar"' : ""}></td></tr>`;
   }).join("");
-  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
-    <tbody>${linhas}</tbody><tfoot><tr><td colspan="7" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
+  return `<div class="tw"><table><thead><tr><th>Veículo</th><th>Placa</th><th>Ano fab./mod.</th><th>Vigência</th><th>Tipo</th><th>Contrato</th><th>Valor calculado</th><th>Acionamento</th><th>Valor final</th></tr></thead>
+    <tbody>${linhas}</tbody><tfoot><tr><td colspan="8" class="n">TOTAL</td><td class="n" id="totFinal">-</td></tr></tfoot></table></div>
     <div id="infoParc"></div>
     <div class="aviso">Exclusão: se a placa teve acionamento, marque "Teve acionamento": o valor fica R$ 0,00 (sem restituição). Sem acionamento, o valor de exclusão é sempre negativo. Substituição: informe o valor após a análise da placa.</div>
     <div class="grid">
@@ -281,7 +308,7 @@ function ligarCiente(s) {
 // ---------- início
 (async () => {
   $("demoInfo").hidden = !API.demo;
-  try { const { user } = await API.get("/me"); await entrar(user); } catch (e) { show("vLogin"); }
+  try { const { user } = await API.get("/me"); await entrar(user); } catch (e) { rotaPublica(); }
 })();
 
 // ---------- redefinir a senha de outro usuário (administrador)
@@ -326,4 +353,66 @@ $("fSenha").onsubmit = async e => {
     if (forcado) { location.hash = USER.role === "admin" ? "#/admin" : "#/nova"; await rota(); }
     else { $("okSenha").hidden = false; $("okSenha").textContent = "Senha alterada."; }
   } catch (err) { $("erroSenha").textContent = err.message; }
+};
+
+// ---------- cancelar solicitação (cliente: as próprias; administrador: qualquer uma; só antes de devolvida)
+function bannerCancelada(s, admin) {
+  const quem = admin ? (s.cancelada_por ? esc(s.cancelada_por.nome) : "") : (s.cancelada_por_perfil === "admin" ? "o atendimento" : "você");
+  return `<div class="aviso"><b>Solicitação cancelada</b> em ${fmtDataHora(s.cancelada_em)}${quem ? " por " + quem : ""}.<br>
+    <small class="quem">Justificativa</small><br>${esc(s.cancelamento_motivo)}</div>`;
+}
+function blocoCancelar(s) {
+  if (s.status !== "em_emissao") return "";
+  return `<div id="cancelarArea" style="margin:0 0 14px"><button class="btn sec mini" id="btnCancelar">Cancelar solicitação</button>
+    <div id="formCancelar" hidden style="margin-top:10px">
+      <label for="motivoCancel">Justificativa do cancelamento (obrigatória, mínimo de 10 caracteres)</label>
+      <textarea id="motivoCancel" maxlength="2000"></textarea>
+      <button class="btn" id="okCancelar" style="background:#d33;color:#fff">Confirmar cancelamento</button>
+      <button class="btn sec" id="voltarCancelar">Voltar</button>
+      <div class="erro" id="erroCancelar"></div>
+    </div></div>`;
+}
+function ligarCancelar(s, abrir) {
+  if (!$("btnCancelar")) return;
+  const mostrar = v => { $("formCancelar").hidden = !v; $("btnCancelar").hidden = v; if (v) $("motivoCancel").focus(); };
+  $("btnCancelar").onclick = () => mostrar(true);
+  $("voltarCancelar").onclick = () => mostrar(false);
+  $("okCancelar").onclick = async () => {
+    $("erroCancelar").textContent = ""; $("okCancelar").disabled = true;
+    try { await API.post(`/solicitacoes/${s.id}/cancelar`, { motivo: $("motivoCancel").value }); notificar("Solicitação cancelada."); await telaDetalhe(s.id); }
+    catch (e) { $("erroCancelar").textContent = e.message; $("okCancelar").disabled = false; }
+  };
+  if (abrir) mostrar(true);
+}
+
+// ---------- páginas públicas (sem login): esqueci a senha e definir senha pelo link do e-mail
+function rotaPublica() {
+  const [, p, token] = location.hash.split("/");
+  if (p === "esqueci") { $("fEsqueci").reset(); $("erroEsqueci").textContent = ""; $("okEsqueci").hidden = true; return show("vEsqueci"); }
+  if (p === "definir-senha" && token) return telaDefinir(token);
+  show("vLogin");
+}
+$("fEsqueci").onsubmit = async e => {
+  e.preventDefault(); $("erroEsqueci").textContent = ""; $("okEsqueci").hidden = true;
+  try {
+    const r = await API.post("/esqueci-senha", { email: $("eMail").value });
+    $("okEsqueci").hidden = false; $("okEsqueci").textContent = r.mensagem;
+    if (r.demo_link) $("okEsqueci").innerHTML += `<br><small class="quem">Demonstração: o e-mail não é enviado de verdade. Abra este link: </small><a href="${esc(r.demo_link)}">definir senha</a>`;
+  } catch (err) { $("erroEsqueci").textContent = err.message; }
+};
+let tokenDefinir = null;
+async function telaDefinir(token) {
+  tokenDefinir = token; $("erroDefinir").textContent = ""; $("fDefinir").reset(); $("fDefinir").hidden = false; $("definirFim").hidden = true; $("definirInvalido").hidden = true; $("definirOla").textContent = "";
+  show("vDefinir");
+  try { const r = await API.get(`/definir-senha/${encodeURIComponent(token)}`); $("definirOla").textContent = `Olá, ${r.nome}. Escolha a sua senha de acesso.`; }
+  catch (e) { $("fDefinir").hidden = true; $("definirInvalido").hidden = false; }
+}
+$("fDefinir").onsubmit = async e => {
+  e.preventDefault(); $("erroDefinir").textContent = "";
+  if ($("dNova").value !== $("dConf").value) { $("erroDefinir").textContent = "As duas senhas não são iguais."; return; }
+  try {
+    const r = await API.post("/definir-senha", { token: tokenDefinir, senha: $("dNova").value });
+    $("fDefinir").hidden = true; $("definirFim").hidden = false; $("okDefinir").textContent = `Senha definida. Entre com ${r.email || r.usuario} e a sua nova senha.`;
+    $("user").value = r.email || r.usuario;
+  } catch (err) { $("erroDefinir").textContent = err.message; }
 };

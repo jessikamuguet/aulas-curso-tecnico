@@ -3,8 +3,8 @@
 const Mock = (() => {
   const KEY = "portal_demo_v1";
   const seed = () => ({ seq: 0, vseq: 0, uid: null,
-    users: [{ id: 1, username: "admin", nome: "Administrador", password: "admin123", role: "admin" },
-            { id: 2, username: "cliente", nome: "Cliente Demonstração", password: "cliente123", role: "cliente" }],
+    users: [{ id: 1, username: "admin", nome: "Administrador", password: "admin123", role: "admin", email: "admin@demo.com.br" },
+            { id: 2, username: "cliente", nome: "Cliente Demonstração", password: "cliente123", role: "cliente", email: "cliente@demo.com.br" }], tokens: {},
     sols: [] });
   let st = null;
   try { st = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
@@ -14,15 +14,16 @@ const Mock = (() => {
   const MAX_ADMINS = 5;
   const me = () => st.users.find(u => u.id === st.uid && u.ativo !== false);
   const adminsAtivos = () => st.users.filter(u => u.role === "admin" && u.ativo !== false).length;
-  const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role, trocar_senha: !!u.trocar });
+  const pub = u => ({ id: u.id, nome: u.nome, username: u.username, role: u.role, email: u.email || null, trocar_senha: !!u.trocar });
   let rotaAtual = "";
   const exige = admin => { const u = me(); if (!u) fail("Faça login para continuar.", 401);
     if (u.trocar && !["/me", "/logout", "/minha-senha"].includes(rotaAtual)) { const e = new Error("Defina uma nova senha para continuar."); e.status = 403; e.trocar_senha = true; throw e; } if (admin && u.role !== "admin") fail("Acesso restrito ao administrador.", 403); return u; };
   const soma = (vs, k) => Math.round(vs.reduce((a, v) => a + (v[k] || 0), 0) * 100) / 100;
   const ser = s => { const u = st.users.find(x => x.id === s.user_id);
-    const { anexos, devolvida_por, ...resto } = JSON.parse(JSON.stringify(s));
-    const eu = me(), resp = devolvida_por && st.users.find(x => x.id === devolvida_por);
-    return { ...resto, ...(eu && eu.role === "admin" ? { devolvida_por: resp ? { id: resp.id, nome: resp.nome, username: resp.username } : null } : {}), anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
+    const { anexos, devolvida_por, cancelada_por, ...resto } = JSON.parse(JSON.stringify(s));
+    const eu = me(), resp = devolvida_por && st.users.find(x => x.id === devolvida_por), canc = cancelada_por && st.users.find(x => x.id === cancelada_por);
+    return { ...resto, cancelada_por_perfil: canc ? canc.role : null,
+             ...(eu && eu.role === "admin" ? { devolvida_por: resp ? { id: resp.id, nome: resp.nome, username: resp.username } : null, cancelada_por: canc ? { nome: canc.nome } : null } : {}), anexos: Object.entries(anexos || {}).map(([tipo, a]) => ({ tipo, nome: a.nome, tamanho: a.tamanho })), usuario: { id: u.id, nome: u.nome, username: u.username },
              total_calculado: soma(s.veiculos, "valor_calculado"), total_final: soma(s.veiculos, "valor_final") }; };
   const achar = id => st.sols.find(s => s.id === +id) || fail("Solicitação não encontrada.", 404);
   const placaNorm = p => String(p || "").toUpperCase().replace(/[- ]/g, "");
@@ -52,8 +53,8 @@ const Mock = (() => {
       const ps = placaNorm(v.placa_substituida);
       if (v.tipo === "SUBSTITUIÇÃO" && !ps) fail(`Veículo ${n}: informe a placa do veículo substituído.`);
       let dias = null, vc = null;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v.data_endosso || "")) fail(`Veículo ${n}: data de vigência inválida.`);
       if (v.tipo !== "SUBSTITUIÇÃO") {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(v.data_endosso || "")) fail(`Veículo ${n}: data do endosso inválida.`);
         if (!(v.valor_inicial >= 0)) fail(`Veículo ${n}: valor inicial inválido.`);
         try { const r = calcularEndosso({ vigencia: vig, data: parse(v.data_endosso), valorInicial: v.valor_inicial, tipo: v.tipo });
               dias = r.dias; vc = Math.round(r.valor * 100) / 100; } catch (e) { fail(e.message); }
@@ -70,7 +71,7 @@ const Mock = (() => {
     }
     const agora = new Date();
     const s = { id: ++st.seq, user_id: u.id, criado_em: agora.toISOString(), prazo_em: prazoHorasUteis(agora).toISOString(), vigencia: d.vigencia || null, parcelas,
-      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, devolvida_por: null, ciente_em: null, divergencia: null, veiculos: linhas };
+      status: "em_emissao", numero_endosso: null, observacao: null, devolvida_em: null, devolvida_por: null, cancelada_em: null, cancelada_por: null, cancelamento_motivo: null, ciente_em: null, divergencia: null, veiculos: linhas };
     st.sols.push(s); save(); return { solicitacao: ser(s) };
   }
   function devolver(d, id) {
@@ -113,6 +114,17 @@ const Mock = (() => {
     Object.assign(s, { status: "ciente", ciente_em: new Date().toISOString(), divergencia: dv || null }); save(); return { solicitacao: ser(s) };
   }
 
+  const emailOk = e => /^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$/.test(String(e || "").trim().toLowerCase());
+  function novoToken(uid, tipo) { const t = [...crypto.getRandomValues(new Uint8Array(24))].map(b => b.toString(16).padStart(2, "0")).join(""); st.tokens[t] = { uid, tipo, exp: Date.now() + (tipo === "convite" ? 48 : 1) * 3600e3 }; save(); return t; }
+  const linkDef = t => location.href.split("#")[0] + "#/definir-senha/" + t;
+  function tokenOk(t) { const k = st.tokens[t]; if (!k || k.usado || k.exp < Date.now()) return null; const u = st.users.find(x => x.id === k.uid); return u && u.ativo !== false ? { k, u } : null; }
+  function cancelar(u, d, id) {
+    const s = achar(id); if (u.role !== "admin" && s.user_id !== u.id) fail("Solicitação não encontrada.", 404);
+    if (s.status === "cancelada") fail("Esta solicitação já foi cancelada.", 409);
+    if (s.status !== "em_emissao") fail("Só é possível cancelar solicitações que ainda não foram devolvidas.", 409);
+    const motivo = String(d.motivo || "").trim(); if (motivo.length < 10) fail("Descreva a justificativa do cancelamento (mínimo de 10 caracteres).");
+    Object.assign(s, { status: "cancelada", cancelada_em: new Date().toISOString(), cancelada_por: u.id, cancelamento_motivo: motivo.slice(0, 2000) }); save(); return { solicitacao: ser(s) };
+  }
   function minhaSenha(u, d) {
     if (d.atual !== u.password) fail("A senha atual está incorreta.");
     if (String(d.nova || "").length < 8) fail("A nova senha precisa ter pelo menos 8 caracteres.");
@@ -129,7 +141,7 @@ const Mock = (() => {
 
   return { anexoUrl: (id, tipo) => (achar(id).anexos?.[tipo]?.data) || "#", handle(method, path, d = {}) {
     let m; rotaAtual = path;
-    if (path === "/login") { const u = st.users.find(x => x.username === String(d.username || "").trim().toLowerCase() && x.password === d.password && x.ativo !== false);
+    if (path === "/login") { const cred = String(d.username || "").trim().toLowerCase(), u = st.users.find(x => (x.username === cred || (x.email || "").toLowerCase() === cred) && x.password === d.password && x.ativo !== false);
       if (!u) fail("Usuário ou senha inválidos.", 401); st.uid = u.id; save(); return { user: pub(u) }; }
     if (path === "/logout") { st.uid = null; save(); return { ok: true }; }
     if (path === "/me") return { user: pub(exige()) };
@@ -141,13 +153,32 @@ const Mock = (() => {
       if (alvo.id === eu.id) fail("Você não pode desativar o seu próprio usuário.", 409);
       if (d.ativo && alvo.role === "admin" && alvo.ativo === false && adminsAtivos() >= MAX_ADMINS) fail(`Limite de ${MAX_ADMINS} administradores atingido. Desative um administrador antes.`, 409);
       alvo.ativo = d.ativo; save(); return { ok: true }; }
-    if (path === "/usuarios") { exige(true); const user = String(d.username || "").trim().toLowerCase();
-      if (!String(d.nome || "").trim() || !/^[a-z0-9._-]{3,30}$/.test(user)) fail("Informe o nome e um usuário de 3 a 30 caracteres (letras, números, ponto, hífen).");
-      if (String(d.password || "").length < 8) fail("A senha precisa ter pelo menos 8 caracteres.");
-      if (st.users.some(x => x.username === user)) fail("Esse usuário já existe.", 409);
+    if (path === "/usuarios") { exige(true);
+      const nome = String(d.nome || "").trim(), email = String(d.email || "").trim().toLowerCase(), senha = String(d.password || "");
+      if (!nome) fail("Informe o nome."); if (!emailOk(email)) fail("Informe um e-mail válido.");
+      if (senha && senha.length < 8) fail("A senha precisa ter pelo menos 8 caracteres.");
       const perfil = d.role || "cliente"; if (!["cliente", "admin"].includes(perfil)) fail("Perfil inválido.");
       if (perfil === "admin" && adminsAtivos() >= MAX_ADMINS) fail(`Limite de ${MAX_ADMINS} administradores atingido. Desative um administrador para cadastrar outro.`, 409);
-      st.users.push({ id: st.users.length + 1, username: user, nome: String(d.nome).trim(), password: d.password, role: perfil, ativo: true }); save(); return { ok: true }; }
+      if (st.users.some(x => (x.email || "").toLowerCase() === email)) fail("Já existe um usuário com esse e-mail.", 409);
+      let user = String(d.username || "").trim().toLowerCase() || email.split("@")[0].replace(/[^a-z0-9._-]/g, "").slice(0, 24) || "usuario";
+      if (user.length < 3) user += "usr"; for (let base = user, n = 1; st.users.some(x => x.username === user); n++) user = base + (n + 1);
+      const novo = { id: Math.max(...st.users.map(x => x.id)) + 1, username: user, nome, password: senha || crypto.randomUUID(), role: perfil, ativo: true, email };
+      st.users.push(novo); save();
+      const r = { ok: true, username: user };
+      if (!senha) { r.convite = "link"; r.link = linkDef(novoToken(novo.id, "convite")); } else r.convite = "aviso"; // na demonstração não há envio de e-mail: mostra o link
+      return r; }
+    if ((m = path.match(/^\/usuarios\/(\d+)\/enviar-link$/))) { exige(true); const alvo = st.users.find(x => x.id === +m[1]); if (!alvo) fail("Usuário não encontrado.", 404);
+      if (alvo.ativo === false) fail("Reative o usuário antes de enviar o link.", 409); return { ok: true, convite: "link", link: linkDef(novoToken(alvo.id, "convite")) }; }
+    if ((m = path.match(/^\/usuarios\/(\d+)\/email$/))) { exige(true); const alvo = st.users.find(x => x.id === +m[1]), email = String(d.email || "").trim().toLowerCase();
+      if (!emailOk(email)) fail("Informe um e-mail válido."); if (!alvo) fail("Usuário não encontrado.", 404);
+      if (st.users.some(x => x.id !== alvo.id && (x.email || "").toLowerCase() === email)) fail("Já existe um usuário com esse e-mail.", 409); alvo.email = email; save(); return { ok: true }; }
+    if (path === "/esqueci-senha") { const email = String(d.email || "").trim().toLowerCase(), u = st.users.find(x => (x.email || "").toLowerCase() === email && x.ativo !== false);
+      return { ok: true, mensagem: "Se esse e-mail estiver cadastrado, você receberá um link para definir uma nova senha em alguns minutos.", ...(u ? { demo_link: linkDef(novoToken(u.id, "reset")) } : {}) }; }
+    if ((m = path.match(/^\/definir-senha\/(.+)$/)) && method === "GET") { const r = tokenOk(decodeURIComponent(m[1])); if (!r) fail("Este link é inválido ou expirou. Peça um novo.", 404); return { nome: r.u.nome, tipo: r.k.tipo }; }
+    if (path === "/definir-senha") { const r = tokenOk(String(d.token || "")); if (!r) fail("Este link é inválido ou expirou. Peça um novo.");
+      if (String(d.senha || "").length < 8) fail("A senha precisa ter pelo menos 8 caracteres.");
+      r.u.password = d.senha; r.u.trocar = false; r.k.usado = true; save(); return { ok: true, usuario: r.u.username, email: r.u.email }; }
+    if ((m = path.match(/^\/solicitacoes\/(\d+)\/cancelar$/))) return cancelar(exige(), d, m[1]);
     if (path === "/solicitacoes" && method === "GET") { const u = exige();
       return { solicitacoes: st.sols.filter(s => u.role === "admin" || s.user_id === u.id).map(ser).reverse() }; }
     if (path === "/solicitacoes") return criar(exige(), d);
