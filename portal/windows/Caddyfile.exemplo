@@ -1,0 +1,10 @@
+# Configuração do Caddy: coloca o portal na internet com HTTPS automático.
+# 1) Troque o endereço abaixo pelo seu (o mesmo que a TI apontou no DNS para este servidor).
+# 2) Salve este arquivo como "Caddyfile" (sem extensão) em C:\caddy.
+endossos.suaempresa.com.br {
+    encode gzip
+    request_body {
+        max_size 30MB
+    }
+    reverse_proxy 127.0.0.1:5000
+}

@@ -152,19 +152,55 @@ só que o administrador precisa copiar e repassar os links que aparecem na tela.
 **Importante:** usuários antigos (criados antes desta versão) não têm e-mail. Em **Usuários**, clique em **E-mail** na linha de cada um
 para cadastrar. Até lá eles continuam entrando com o usuário e a senha de antes.
 
-## Passo 11. Acesso pela internet (Opção B)
+## Passo 11. Transformar em um site na internet (Opção B)
 
-Esta parte é da **TI**. Mande este pedido:
+Até aqui o portal abre por um número, como `http://192.168.0.25:5000`, e só dentro da rede. Para ser **um site de verdade**
+(`https://endossos.suaempresa.com.br`, com cadeado, acessível de qualquer lugar) são necessárias **quatro coisas**:
 
-> "Precisamos publicar o endereço **endossos.suaempresa.com.br** com **HTTPS** (certificado válido) apontando para
-> `http://127.0.0.1:5000` deste servidor, como proxy reverso (IIS com ARR ou Nginx/Caddy). O proxy deve enviar os cabeçalhos
-> `X-Forwarded-For` e `X-Forwarded-Proto`. **Não** liberar a porta 5000 diretamente para a internet."
+| O que | Para quê | Quem faz |
+|---|---|---|
+| 1. Um **endereço** (domínio) | O nome que as pessoas digitam | TI (cria no DNS da empresa um nome como `endossos.suaempresa.com.br` apontando para o **IP público** do servidor) |
+| 2. **Portas 80 e 443 abertas** até o servidor | Para a internet chegar nele | TI (roteador/firewall da empresa) |
+| 3. **HTTPS** (certificado) | Cadeado e senhas protegidas | O Caddy faz sozinho e de graça (passos abaixo) |
+| 4. O portal rodando só por dentro | O Caddy fica na frente e o portal atrás | Você (config.env) |
 
-Depois, no `config.env`:
-1. troque `PORTAL_HOST=0.0.0.0` por **`PORTAL_HOST=127.0.0.1`**;
-2. apague o `#` das linhas **`HTTPS=1`** e **`TRUST_PROXY=1`**;
-3. **não** use o `liberar-porta.bat`;
-4. reinicie o portal (Passo 12).
+> **Sem HTTPS, não coloque o portal na internet:** as senhas dos clientes viajariam abertas.
+
+**Caminho fácil: Caddy.** Ele é um programa pequeno que cuida do HTTPS e do certificado, e renova sozinho.
+
+1. **Antes de tudo**, peça à TI os itens 1 e 2 da tabela. Mande este pedido:
+   > "Precisamos de um endereço **endossos.suaempresa.com.br** apontando para o IP público do servidor do portal, e das portas
+   > **80 e 443** (TCP) encaminhadas para ele. A porta 5000 **não** deve ser aberta para a internet."
+2. Baixe o Caddy para Windows em **https://caddyserver.com/download** (Windows, amd64) e coloque o `caddy.exe` em **`C:\caddy`**.
+3. Copie `C:\portal\windows\Caddyfile.exemplo` para `C:\caddy` e renomeie para **`Caddyfile`** (sem extensão). Abra no Bloco de Notas
+   e troque `endossos.suaempresa.com.br` pelo seu endereço.
+4. Botão direito em **`C:\portal\windows\instalar-https.bat`** → **Executar como administrador**. Ele libera as portas 80 e 443 no
+   Windows e liga o Caddy sozinho a cada início do servidor.
+5. No `C:\portal\config.env`:
+   - troque `PORTAL_HOST=0.0.0.0` por **`PORTAL_HOST=127.0.0.1`**;
+   - apague o `#` de **`HTTPS=1`** e **`TRUST_PROXY=1`**;
+   - preencha **`PORTAL_URL=https://endossos.suaempresa.com.br`** (aparece nos links dos e-mails).
+6. Reinicie o portal (Passo 12).
+7. **Teste:** em um celular com a internet do plano (fora do Wi-Fi da empresa), abra `https://endossos.suaempresa.com.br`.
+   Deve aparecer o login com o **cadeado**. Se a página não abrir, quase sempre é o DNS ou as portas 80/443 (volte à TI).
+8. **Feche a porta antiga:** se você usou o `liberar-porta.bat` (Passo 7), rode no `cmd` como administrador:
+   `netsh advfirewall firewall delete rule name="Portal Endossos"`. Assim a porta 5000 deixa de ser acessível por fora.
+
+> Os arquivos do Caddy (`Caddyfile.exemplo` e `instalar-https.bat`) seguem o padrão do programa, mas **não foram executados em um
+> Windows de verdade**. O lado do portal (HTTPS, cookie seguro, IP real do cliente atrás de proxy) foi testado.
+
+**Se a TI preferir outra ferramenta** (IIS com ARR, Nginx), o pedido é o mesmo: HTTPS válido apontando para
+`http://127.0.0.1:5000`, repassando `X-Forwarded-For` e `X-Forwarded-Proto`.
+
+**Alternativa sem servidor próprio: hospedar na nuvem.** Serviços como Render, Railway ou um servidor virtual (VPS) já vêm com
+endereço e HTTPS. É o caminho mais simples se a empresa não quer abrir portas, mas atenção a três pontos:
+1. precisa de **disco persistente** para o `portal.db` (senão os dados somem a cada atualização) e de backup;
+2. o comando de início é `gunicorn -w 1 --threads 4 -b 0.0.0.0:$PORT app:app` e as variáveis do `config.env` entram como
+   variáveis de ambiente do serviço (`ADMIN_PASSWORD`, `HTTPS=1`, `TRUST_PROXY=1`, `PORTAL_URL`, `SMTP_...`);
+3. os dados (e-mails, placas, PDFs) ficam fora da empresa: confira com quem cuida de **LGPD/segurança** se isso é permitido.
+
+**Depois de colocar no ar:** cadastre os clientes (Passo 8), configure os e-mails (seção "E-mails do portal") e confirme o backup
+(Passo 9).
 
 ## Passo 12. Desligar, ligar e reiniciar
 
