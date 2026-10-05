@@ -82,12 +82,25 @@ Entrou? Ótimo. **Feche a janela preta** (isso desliga o portal; o próximo pass
 ## Passo 7. Liberar o acesso para outros computadores (Opção A)
 
 1. Botão direito em **`liberar-porta.bat`** → **Executar como administrador**.
-2. Descubra o endereço do servidor: tecla Windows, digite `cmd`, Enter, digite `ipconfig` e Enter. Procure
-   **"Endereço IPv4"**, por exemplo `192.168.0.25`.
-3. Em **outro computador da rede**, abra `http://192.168.0.25:5000` (com o seu número). A tela de login deve aparecer.
+2. Descubra o endereço certo: dê dois cliques em **`descobrir-endereco.bat`**. (O `iniciar.bat` também mostra isso na janela
+   preta.) Aparece algo como `http://192.168.0.25:5000` em "Endereços para abrir em OUTROS computadores da rede".
+3. Em **outro computador da rede**, abra esse endereço. A tela de login deve aparecer.
 
-**Dica:** peça à TI para dar um **IP fixo** ao servidor (senão o endereço pode mudar) e, se quiserem, um nome fácil,
-como `http://endossos`.
+> **Atenção: endereço que começa com `169.254` NÃO funciona para os outros.** Ele aparece quando o computador **não recebeu
+> um IP da rede** (cabo ou Wi-Fi desconectado, ou a rede não entregou o endereço). Quem abre pelo próprio servidor ainda
+> consegue entrar, mas ninguém mais. Conecte o servidor à rede da empresa e, se continuar assim, peça à TI um **IP fixo**.
+> Um endereço de VPN, de Hyper-V ou de WSL também não serve: use o da placa ligada à rede da empresa.
+
+**Se o endereço está certo e ainda não abre nos outros computadores:**
+1. O `config.env` tem `PORTAL_HOST=0.0.0.0`? (Se estiver `127.0.0.1`, só o próprio servidor acessa.) Depois de mudar, reinicie (Passo 12).
+2. Rodou o `liberar-porta.bat` como administrador? Se há antivírus com firewall próprio, a TI precisa liberar a porta **5000** nele também.
+3. Teste do outro computador: tecla Windows, digite `powershell`, Enter, e rode
+   `Test-NetConnection 192.168.0.25 -Port 5000` (com o seu número). Se aparecer `TcpTestSucceeded : True`, a rede está
+   certa; se `False`, é firewall ou rede (peça à TI).
+4. Os dois computadores estão na **mesma rede**? Redes de visitantes e Wi-Fi com "isolamento de clientes" bloqueiam isso.
+
+**Dica:** peça à TI um **IP fixo** para o servidor (senão o endereço pode mudar) e, se quiserem, um nome fácil, como
+`http://endossos`.
 
 ## Passo 8. Cadastrar os clientes
 
@@ -144,7 +157,7 @@ Sempre que mudar o `config.env`, reinicie.
 | Sintoma | O que fazer |
 |---|---|
 | "PYTHON NAO ENCONTRADO" | Refaça o Passo 1 marcando "Add python.exe to PATH" |
-| Abre no servidor, mas não em outro PC | Rode `liberar-porta.bat` como administrador; confira o IP com `ipconfig`; veja se é a mesma rede |
+| Abre no servidor, mas não em outro PC | Veja o Passo 7: o endereço não pode começar com `169.254`; rode `liberar-porta.bat`; confira `PORTAL_HOST=0.0.0.0`; use `descobrir-endereco.bat` |
 | Reiniciei o servidor e o portal não ligou | Passo 6 não foi feito, ou o Python foi instalado "só para mim" (refaça o Passo 1 para todos os usuários) |
 | "Muitas tentativas" no login | Espere 1 minuto e tente de novo |
 | Tela não carrega depois de editar `config.env` | Reinicie o portal (Passo 12); confira que não há aspas nem erro de digitação |

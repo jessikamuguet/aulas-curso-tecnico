@@ -5,10 +5,10 @@
   function addVeiculo(v = {}) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="af" inputmode="numeric" maxlength="4" size="5"></td><td><input class="am" inputmode="numeric" maxlength="4" size="5"></td><td><input class="np"></td>
-      <td><select class="tp">${opts}</select></td><td><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
+      <td><select class="tp">${opts}</select></td><td class="col-ps"><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
     const q = s => tr.querySelector(s);
     q(".tp").value = v.tp || "INCLUSÃO"; q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || ""; q(".af").value = v.af || ""; q(".am").value = v.am || "";
-    q(".tp").onchange = e => { q(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; avisoSub(); };
+    q(".tp").onchange = e => { const sub = e.target.value === "SUBSTITUIÇÃO"; q(".ps").disabled = !sub; if (!sub) q(".ps").value = ""; avisoSub(); };
     q(".ps").oninput = avisoSub; q(".pl").oninput = avisoSub;
     q(".x").onclick = () => { tr.remove(); avisoSub(); syncContrato(); };
     $("veiculos").appendChild(tr);
@@ -38,6 +38,7 @@
     const todos = lerVeiculos(), subs = todos.filter(v => v.tp === "SUBSTITUIÇÃO");
     $("avisoExc").hidden = !todos.some(v => v.tp === "EXCLUSÃO");
     $("avisoExc").textContent = AVISO_EXC;
+    $("tabVeiculos").classList.toggle("com-sub", subs.length > 0); // a coluna da placa substituída só aparece com Substituição
     $("avisoSub").hidden = !subs.length;
     if (!subs.length) return;
     $("avisoSub").textContent = "Antes de prosseguir com a substituição a placa informada passará por análise interna e após o retorno da análise, retornamos com o cálculo da substituição.";
@@ -236,5 +237,5 @@
     $("linhas").innerHTML = ""; $("vig").value = ""; $("mesmaCat").checked = $("mesmaData").checked = false;
     $("termo").disabled = false; $("prosseguir").disabled = false; $("erroEnvio").textContent = "";
     ["erro1","erroImp"].forEach(i => $(i).textContent = ""); $("listaErros").hidden = true; $("avisoSub").hidden = $("avisoExc").hidden = true;
-    subsPend = []; total = null; resetTermo(); etapa(1);
+    subsPend = []; total = null; resetTermo(); etapa(1); avisoSub();
   }

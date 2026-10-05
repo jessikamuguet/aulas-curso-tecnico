@@ -11,4 +11,8 @@ import app as portal  # carrega config.env e prepara o banco
 host = os.environ.get("PORTAL_HOST", "127.0.0.1")
 porta = int(os.environ.get("PORTAL_PORT", "5000"))
 print(f"Portal de Movimentações | Endossos rodando em http://{host}:{porta}  (feche esta janela para parar)")
+if host == "0.0.0.0":
+    from enderecos import mostrar
+
+    mostrar(porta)
 serve(portal.app, host=host, port=porta, threads=8)

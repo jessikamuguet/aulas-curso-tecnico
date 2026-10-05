@@ -59,6 +59,7 @@
   .doc { color:#fff; background:var(--accent); padding:7px 14px; border-radius:8px; text-decoration:none; font-size:.9rem; }
   .doc:hover { filter:brightness(1.15); }
   .toast { position:fixed; left:16px; right:16px; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); max-width:520px; margin:0 auto; padding:12px 16px; border-radius:10px; background:var(--card); border:1px solid var(--brand); color:var(--text); z-index:10; }
+  .col-ps { display:none; } .com-sub .col-ps { display:table-cell; }
 </style>
 </head>
 <body>
@@ -98,8 +99,8 @@
       </div>
       <div class="aviso" id="avisoExc" hidden></div>
       <div class="aviso" id="avisoSub" hidden></div>
-      <div class="tw"><table>
-        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Ano fab.</th><th>Ano mod.</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
+      <div class="tw"><table id="tabVeiculos">
+        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Ano fab.</th><th>Ano mod.</th><th>Nº Contrato</th><th>Tipo de endosso</th><th class="col-ps">Placa do veículo substituído</th><th></th></tr></thead>
         <tbody id="veiculos"></tbody>
       </table></div>
       <label class="chkl"><input type="checkbox" id="repContrato"> Usar o mesmo Nº Contrato para todos os veículos (repete o do primeiro da lista)</label>
@@ -403,10 +404,10 @@ const API = (() => {
   function addVeiculo(v = {}) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><input class="mm"></td><td><input class="pl"></td><td><input class="ch"></td><td><input class="af" inputmode="numeric" maxlength="4" size="5"></td><td><input class="am" inputmode="numeric" maxlength="4" size="5"></td><td><input class="np"></td>
-      <td><select class="tp">${opts}</select></td><td><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
+      <td><select class="tp">${opts}</select></td><td class="col-ps"><input class="ps" disabled></td><td><button class="x" title="Remover">✕</button></td>`;
     const q = s => tr.querySelector(s);
     q(".tp").value = v.tp || "INCLUSÃO"; q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || ""; q(".af").value = v.af || ""; q(".am").value = v.am || "";
-    q(".tp").onchange = e => { q(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; avisoSub(); };
+    q(".tp").onchange = e => { const sub = e.target.value === "SUBSTITUIÇÃO"; q(".ps").disabled = !sub; if (!sub) q(".ps").value = ""; avisoSub(); };
     q(".ps").oninput = avisoSub; q(".pl").oninput = avisoSub;
     q(".x").onclick = () => { tr.remove(); avisoSub(); syncContrato(); };
     $("veiculos").appendChild(tr);
@@ -436,6 +437,7 @@ const API = (() => {
     const todos = lerVeiculos(), subs = todos.filter(v => v.tp === "SUBSTITUIÇÃO");
     $("avisoExc").hidden = !todos.some(v => v.tp === "EXCLUSÃO");
     $("avisoExc").textContent = AVISO_EXC;
+    $("tabVeiculos").classList.toggle("com-sub", subs.length > 0); // a coluna da placa substituída só aparece com Substituição
     $("avisoSub").hidden = !subs.length;
     if (!subs.length) return;
     $("avisoSub").textContent = "Antes de prosseguir com a substituição a placa informada passará por análise interna e após o retorno da análise, retornamos com o cálculo da substituição.";
@@ -634,7 +636,7 @@ const API = (() => {
     $("linhas").innerHTML = ""; $("vig").value = ""; $("mesmaCat").checked = $("mesmaData").checked = false;
     $("termo").disabled = false; $("prosseguir").disabled = false; $("erroEnvio").textContent = "";
     ["erro1","erroImp"].forEach(i => $(i).textContent = ""); $("listaErros").hidden = true; $("avisoSub").hidden = $("avisoExc").hidden = true;
-    subsPend = []; total = null; resetTermo(); etapa(1);
+    subsPend = []; total = null; resetTermo(); etapa(1); avisoSub();
   }
 </script>
 <script>// Navegação, perfis (admin/cliente) e telas do portal
