@@ -69,7 +69,7 @@
         <label for="arq" style="margin:0">Importar planilha (.xlsx ou .csv)</label>
         <input id="arq" type="file" accept=".xlsx,.csv">
         <button type="button" class="btn sec mini" id="modelo">Baixar modelo (CSV)</button>
-        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB, MOD, PLACA, CHASSI. Os veículos importados entram como inclusão.</small>
+        <small>Use o modelo com a aba FROTA e as colunas: MARCA, MODELO, TIPO, FAB e MOD (ou Ano fab/Ano mod, ou Ano fabricação/Ano modelo, em colunas separadas), PLACA, CHASSI. Os veículos importados entram como inclusão.</small>
         <div class="erro" id="erroImp" style="flex-basis:100%"></div>
         <ul class="lista-erros" id="listaErros" hidden></ul>
       </div>
@@ -217,6 +217,9 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
 
   // Importação de planilha (modelo: aba FROTA)
   const COLS = ["MARCA","MODELO","TIPO","FAB","MOD","PLACA","CHASSI"];
+  // Aceita FAB/MOD, Ano fab/Ano mod ou Ano fabricação/Ano modelo (sempre em colunas separadas)
+  const ALIAS = { FAB:["FAB","ANO FAB","ANO FABRICACAO","ANO DE FABRICACAO"], MOD:["MOD","ANO MOD","ANO MODELO","ANO DE MODELO"] };
+  const canon = c => { const n = norm(c).replace(/[^A-Z0-9]+/g, " ").trim(); return Object.keys(ALIAS).find(k => ALIAS[k].includes(n)) || norm(c); };
   const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
   $("modelo").onclick = () => {
     const csv = "﻿QTD;MARCA;MODELO;TIPO;FAB;MOD;PLACA;CHASSI\n1;SR;RANDON SR CC;SEMI REBOQUE;2011;2012;AUX7D92;9ADK1243BCM330714\n";
@@ -273,9 +276,9 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
   function validarFrota(linhas) {
     const hi = linhas.findIndex(r => r && r.some(c => norm(c) === "PLACA"));
     if (hi < 0) return { erros: ["Cabeçalho não encontrado. A planilha precisa ter a coluna PLACA (veja o modelo)."] };
-    const idx = {}; (linhas[hi] || []).forEach((c, i) => { if (c != null) idx[norm(c)] = i; });
+    const idx = {}; (linhas[hi] || []).forEach((c, i) => { if (c != null) idx[canon(c)] = i; });
     const falta = COLS.filter(c => !(c in idx));
-    if (falta.length) return { erros: ["Colunas ausentes no modelo: " + falta.join(", ") + "."] };
+    if (falta.length) return { erros: ["Colunas ausentes no modelo: " + falta.map(c => c === "FAB" ? "FAB (ou Ano fab / Ano fabricação)" : c === "MOD" ? "MOD (ou Ano mod / Ano modelo)" : c).join(", ") + "."] };
     const erros = [], veiculos = [], placas = new Set(), chassis = new Set(), existentes = lerVeiculos();
     existentes.forEach(v => { placas.add(norm(v.pl).replace(/[- ]/g, "")); chassis.add(norm(v.ch)); });
     for (let i = hi + 1; i < linhas.length; i++) {
