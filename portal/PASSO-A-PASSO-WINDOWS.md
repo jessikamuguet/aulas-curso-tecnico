@@ -145,12 +145,35 @@ Tecla Windows → digite **Agendador de Tarefas** → abra → **Biblioteca do A
 Botão direito: **Finalizar** (desliga) e **Executar** (liga). Para reiniciar, faça os dois, um depois do outro.
 Sempre que mudar o `config.env`, reinicie.
 
-## Passo 13. Atualizar o portal no futuro
+## Passo 13. Atualizar o portal quando sair uma versão nova
 
-1. Faça um backup (`backup.bat`) e desligue o portal.
-2. Baixe a versão nova (Passo 2) e copie por cima da pasta `C:\portal`, **sem apagar**: `config.env`, `portal.db`,
-   `.secret_key`, `venv` e `backups`.
-3. Dois cliques em `instalar.bat` e ligue o portal.
+O portal instalado **não se atualiza sozinho**: você copia os arquivos novos por cima e roda um arquivo que cuida do resto.
+Seus dados (usuários, solicitações, PDFs, senhas, configuração) **não são apagados**.
+
+1. **Baixe a versão nova** como no Passo 2 (GitHub → branch → **Code → Download ZIP**) e abra o ZIP.
+2. **Copie o conteúdo da pasta `portal` do ZIP para `C:\portal`** e, quando o Windows perguntar, escolha
+   **"Substituir os arquivos no destino"**. Pode copiar tudo: o ZIP não contém `portal.db`, `config.env` nem `venv`,
+   então eles não são tocados.
+3. Botão direito em **`C:\portal\windows\atualizar.bat`** → **Executar como administrador**. Ele faz, nesta ordem:
+   backup do banco, desliga o portal, atualiza os componentes e liga de novo. Se o backup falhar, ele **cancela**
+   sem mexer em nada.
+4. Abra o portal no navegador e aperte **Ctrl+F5** (para o navegador não usar a tela antiga).
+
+Mudanças no banco (por exemplo, colunas novas) são feitas **automaticamente** na primeira vez que o portal liga.
+
+**Se algo der errado:** desligue o portal (Passo 12), restaure o último backup (Passo 9) e volte os arquivos da versão anterior.
+
+### Servidor sem internet
+
+O `atualizar.bat` precisa baixar os componentes. Se o servidor **não tem internet**:
+1. Em um computador **com internet, mesmo Windows e mesma versão do Python** do servidor, abra o `cmd` na pasta `portal` e rode:
+   `pip download -r requirements.txt waitress -d pacotes`
+2. Copie a pasta **`pacotes`** que apareceu para dentro de `C:\portal` no servidor.
+3. Rode o `atualizar.bat` normalmente: se existir a pasta `pacotes`, ele instala dela, sem internet.
+
+Se a versão nova **não** trouxe componentes novos, o passo 3 do `atualizar.bat` termina rápido e nada precisa ser baixado.
+
+**E a demonstração (o link do Claude)?** Ela é separada: eu a atualizo e o link continua o mesmo, você não faz nada.
 
 ## Problemas comuns
 
