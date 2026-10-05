@@ -41,6 +41,9 @@
   .aviso { margin:12px 0; padding:14px; border-radius:8px; border:1px solid var(--brand); background:#f8710114; }
   .lista-erros { margin:10px 0 0; padding-left:20px; max-height:180px; overflow:auto; color:#e05555; font-size:.9rem; }
   .btn.mini { margin:0; padding:7px 12px; }
+  .chkl { display:flex; gap:8px; align-items:center; margin:12px 0 0; font-size:.9rem; color:var(--text); cursor:pointer; }
+  input[type=checkbox] { width:auto; accent-color:var(--brand); }
+  input:disabled { opacity:.6; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -80,6 +83,7 @@
         <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
         <tbody id="veiculos"></tbody>
       </table></div>
+      <label class="chkl"><input type="checkbox" id="repContrato"> Usar o mesmo Nº Contrato para todos os veículos (repete o do primeiro da lista)</label>
       <button class="btn sec" id="addV">+ Adicionar veículo</button>
       <button class="btn" id="irCalculo">Continuar para o cálculo</button>
       <div class="erro" id="erro1"></div>
@@ -90,6 +94,7 @@
       <div class="card">
         <h2>2. Cálculo</h2>
         <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
+        <label class="chkl" id="mesmaCatBox" hidden><input type="checkbox" id="mesmaCat"> Todos os veículos são da mesma categoria? Marque para repetir o valor inicial do primeiro veículo em todos</label>
         <div class="tw"><table>
           <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Dias</th><th>Valor</th></tr></thead>
           <tbody id="linhas"></tbody>
@@ -175,10 +180,21 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     q(".tp").value = v.tp || "INCLUSÃO"; q(".mm").value = v.mm || ""; q(".pl").value = v.pl || ""; q(".ch").value = v.ch || "";
     q(".tp").onchange = e => { q(".ps").disabled = e.target.value !== "SUBSTITUIÇÃO"; avisoSub(); };
     q(".ps").oninput = avisoSub; q(".pl").oninput = avisoSub;
-    q(".x").onclick = () => { tr.remove(); avisoSub(); };
+    q(".x").onclick = () => { tr.remove(); avisoSub(); syncContrato(); };
     $("veiculos").appendChild(tr);
   }
-  $("addV").onclick = () => addVeiculo();
+  // Repete o Nº Contrato do primeiro veículo nos demais
+  function syncContrato() {
+    const rows = [...$("veiculos").children], on = $("repContrato").checked;
+    rows.forEach((tr, i) => {
+      const np = tr.querySelector(".np");
+      if (i === 0) { np.disabled = false; return; }
+      np.disabled = on; if (on) np.value = rows[0].querySelector(".np").value;
+    });
+  }
+  $("repContrato").onchange = syncContrato;
+  $("veiculos").addEventListener("input", e => { if (e.target.classList.contains("np")) syncContrato(); });
+  $("addV").onclick = () => { addVeiculo(); syncContrato(); };
   addVeiculo();
 
   const lerVeiculos = () => [...$("veiculos").children].map(tr => ({
@@ -202,7 +218,7 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     avisoSub();
     if (!vs.length) { $("erro1").textContent = "Não há veículos para calcular agora: as substituições seguem para análise interna da placa."; return; }
     $("erro1").textContent = "";
-    $("linhas").innerHTML = "";
+    $("linhas").innerHTML = ""; $("mesmaCat").checked = false;
     vs.forEach(v => {
       const tr = document.createElement("tr"); tr.dataset.tp = v.tp;
       tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}</small></td><td>${v.tp}</td>
@@ -214,6 +230,7 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     $("avisoSub2").innerHTML = subs.length ? `Em análise interna (fora do cálculo): ${subs.map(v => esc(v.pl)).join(", ")}.` : "";
     const ts = new Set(vs.map(v => v.tp));
     $("termoTipo").textContent = ts.size > 1 ? "inclusão e exclusão" : ts.has("EXCLUSÃO") ? "exclusão" : "inclusão";
+    $("mesmaCatBox").hidden = vs.length < 2;
     resetTermo(); recalcular(); etapa(2);
   };
   $("voltar").onclick = () => etapa(1);
@@ -314,7 +331,7 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
       } else {
         const vazio = lerVeiculos().length === 1 && !lerVeiculos()[0].mm && !lerVeiculos()[0].pl && !lerVeiculos()[0].ch;
         if (vazio) $("veiculos").innerHTML = "";
-        veiculos.forEach(v => addVeiculo({ ...v, tp: $("tipoImp").value })); avisoSub();
+        veiculos.forEach(v => addVeiculo({ ...v, tp: $("tipoImp").value })); avisoSub(); syncContrato();
         $("erroImp").style.color = "inherit"; $("erroImp").textContent = `${veiculos.length} veículo(s) importado(s) como ${$("tipoImp").value.toLowerCase()}.`;
       }
     } catch (err) { $("erroImp").textContent = "Não foi possível ler a planilha: " + err.message; }
@@ -341,7 +358,17 @@ function calcularEndosso({ vigencia, data, valorInicial, tipo }) {
     $("termoBox").hidden = total === null;
     if (total === null) resetTermo();
   }
-  $("etapa2").addEventListener("input", recalcular);
+  // Mesma categoria: repete o valor inicial do primeiro veículo nos demais
+  function syncValor() {
+    const rows = [...$("linhas").children], on = $("mesmaCat").checked;
+    rows.forEach((tr, i) => {
+      const vi = tr.querySelector(".vi");
+      if (i === 0) return;
+      vi.disabled = on; if (on) vi.value = rows[0].querySelector(".vi").value;
+    });
+  }
+  $("etapa2").addEventListener("input", () => { syncValor(); recalcular(); });
+  $("mesmaCat").onchange = () => { syncValor(); recalcular(); };
 
   // Termo e prosseguir
   function resetTermo() { $("termo").setAttribute("aria-pressed","false"); $("prosseguir").hidden = true; $("okMsg").hidden = true; }
