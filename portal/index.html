@@ -60,7 +60,7 @@
     <div id="etapa1" class="card">
       <h2>1. Veículos</h2>
       <div class="tw"><table>
-        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Proposta</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
+        <thead><tr><th>Marca/Modelo</th><th>Placa</th><th>Chassi</th><th>Nº Contrato</th><th>Tipo de endosso</th><th>Placa do veículo substituído</th><th></th></tr></thead>
         <tbody id="veiculos"></tbody>
       </table></div>
       <button class="btn sec" id="addV">+ Adicionar veículo</button>
@@ -74,9 +74,9 @@
         <h2>2. Cálculo</h2>
         <div class="grid"><div><label for="vig">Vigência inicial</label><input id="vig" type="date"></div></div>
         <div class="tw"><table>
-          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Valor inicial do substituído</th><th>Dias</th><th>Custo dia</th><th>C. devido</th><th>Valor</th></tr></thead>
+          <thead><tr><th>Veículo</th><th>Tipo</th><th>Data</th><th>Valor inicial</th><th>Valor inicial do substituído</th><th>Dias</th><th>Valor</th></tr></thead>
           <tbody id="linhas"></tbody>
-          <tfoot><tr><td colspan="8" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
+          <tfoot><tr><td colspan="6" class="n">TOTAL</td><td class="n" id="tV">-</td></tr></tfoot>
         </table></div>
         <div class="erro" id="erroCalc"></div>
         <button class="btn sec" id="voltar">← Voltar</button>
@@ -139,7 +139,7 @@
       tr.innerHTML = `<td>${esc(v.mm)}<br><small>${esc(v.pl)}${v.tp==="SUBSTITUIÇÃO" ? " (substitui "+esc(v.ps)+")" : ""}</small></td><td>${v.tp}</td>
         <td><input class="dt" type="date"></td><td><input class="vi" type="number" step="0.01" min="0"></td>
         <td>${v.tp==="SUBSTITUIÇÃO" ? '<input class="vs" type="number" step="0.01" min="0">' : "—"}</td>
-        <td class="n r-dias">-</td><td class="n r-cd">-</td><td class="n r-dev">-</td><td class="n r-val">-</td>`;
+        <td class="n r-dias">-</td><td class="n r-val">-</td>`;
       $("linhas").appendChild(tr);
     });
     resetTermo(); recalcular(); etapa(2);
@@ -156,12 +156,12 @@
     for (const tr of $("linhas").children) {
       const q = s => tr.querySelector(s), data = q(".dt").value, vi = parseFloat(q(".vi").value);
       const vsEl = q(".vs"), vs = vsEl ? parseFloat(vsEl.value) : 0;
-      const set = (a,b,c,d) => { q(".r-dias").textContent=a; q(".r-cd").textContent=b; q(".r-dev").textContent=c; q(".r-val").textContent=d; };
-      if (!vig || !data || isNaN(vi) || (vsEl && isNaN(vs))) { set("-","-","-","-"); completo = false; continue; }
+      const set = (a,d) => { q(".r-dias").textContent=a; q(".r-val").textContent=d; };
+      if (!vig || !data || isNaN(vi) || (vsEl && isNaN(vs))) { set("-","-"); completo = false; continue; }
       try {
         const r = calcularEndosso({ vigencia: vig, data: parse(data), valorInicial: vi, valorSubstituido: vs, tipo: tr.dataset.tp });
-        set(r.dias, brl(r.custoDia), brl(r.custoDevido), brl(r.valor)); tv += r.valor;
-      } catch (e) { set("-","-","-","-"); erro = e.message; completo = false; }
+        set(r.dias, brl(r.valor)); tv += r.valor;
+      } catch (e) { set("-","-"); erro = e.message; completo = false; }
     }
     $("tV").textContent = brl(tv); $("erroCalc").textContent = erro;
     total = completo && !erro && $("linhas").children.length ? tv : null;
