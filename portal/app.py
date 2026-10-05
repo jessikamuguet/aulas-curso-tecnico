@@ -1,7 +1,7 @@
 """Portal de Movimentações | Endossos - backend (Flask + SQLite).
 
 Rodar:  pip install -r requirements.txt && python app.py
-Variáveis opcionais: ADMIN_PASSWORD, SECRET_KEY, PORT, HTTPS=1 (cookie seguro), PORTAL_DB
+Variáveis opcionais: ADMIN_PASSWORD, SECRET_KEY, PORT, HTTPS=1 (cookie seguro), TRUST_PROXY=1, PORTAL_DB
 """
 import json, os, re, secrets, sqlite3, time
 from urllib.parse import quote
@@ -32,6 +32,10 @@ def _secret():
             f.write(secrets.token_hex(32))
     return open(path).read().strip()
 
+
+if os.environ.get("TRUST_PROXY") == "1":  # atrás de nginx/IIS: usa o IP e o https reais enviados pelo proxy
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 app.secret_key = _secret()
 app.config.update(MAX_CONTENT_LENGTH=25 * 1024 * 1024, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
